@@ -7,7 +7,14 @@ export type FieldType =
   | 'checkbox' 
   | 'date' 
   | 'file' 
-  | 'signature';
+  | 'signature'
+  | 'image'
+  | 'image-gallery'
+  | 'video-link'
+  | 'table'
+  | 'nested-report'
+  | 'comment-thread'
+  | 'report-link';
 
 export interface FormField {
   id: string;

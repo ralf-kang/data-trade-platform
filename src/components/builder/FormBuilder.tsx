@@ -6,7 +6,8 @@ import { FormField, FieldType, FormTemplate } from './types';
 import { 
   Type, AlignLeft, Hash, List, 
   CheckSquare, Calendar, Upload, PenTool,
-  Trash2, ArrowUp, ArrowDown, Plus, Save
+  Trash2, ArrowUp, ArrowDown, Plus, Save,
+  Image as ImageIcon, Images, Video, Table, FileBox, MessageSquare, Link as LinkIcon
 } from 'lucide-react';
 
 const FIELD_TYPES: { type: FieldType; label: string; icon: React.ReactNode }[] = [
@@ -19,6 +20,13 @@ const FIELD_TYPES: { type: FieldType; label: string; icon: React.ReactNode }[] =
   { type: 'date', label: '날짜', icon: <Calendar className="w-4 h-4" /> },
   { type: 'file', label: '파일 첨부', icon: <Upload className="w-4 h-4" /> },
   { type: 'signature', label: '서명', icon: <PenTool className="w-4 h-4" /> },
+  { type: 'image', label: '단일 이미지', icon: <ImageIcon className="w-4 h-4 text-purple-600" /> },
+  { type: 'image-gallery', label: '이미지 갤러리', icon: <Images className="w-4 h-4 text-purple-600" /> },
+  { type: 'video-link', label: '동영상 링크', icon: <Video className="w-4 h-4 text-purple-600" /> },
+  { type: 'table', label: '표 (Table)', icon: <Table className="w-4 h-4 text-purple-600" /> },
+  { type: 'nested-report', label: '하위 레포트', icon: <FileBox className="w-4 h-4 text-purple-600" /> },
+  { type: 'report-link', label: '레포트 링크', icon: <LinkIcon className="w-4 h-4 text-purple-600" /> },
+  { type: 'comment-thread', label: '댓글 코멘트', icon: <MessageSquare className="w-4 h-4 text-purple-600" /> },
 ];
 
 export default function FormBuilder() {
