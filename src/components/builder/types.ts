@@ -8,18 +8,9 @@ export type FieldType =
   | 'date' 
   | 'file' 
   | 'signature'
-  | 'image'
-  | 'image-gallery'
-  | 'video-link'
-  | 'table'
-  | 'nested-report'
-  | 'comment-thread'
-  | 'report-link'
-  | 'slide-card'
-  | 'popup-toggle'
-  | 'privacy-consent'
-  | 'api-select'
-  | 'csv-select';
+  | 'image' | 'image-viewer' | 'table' | 'file-upload' | 'comment-thread'
+  | 'slide-card' | 'popup-toggle' | 'privacy-consent' | 'api-select' | 'csv-select'
+  | 'regex-input' | 'map-address';
 
 export interface FormField {
   id: string;
@@ -27,7 +18,9 @@ export interface FormField {
   label: string;
   placeholder?: string;
   required: boolean;
-  options?: string[]; // For dropdown, radio, checkbox, etc.
+  nullable?: boolean; // Null 허용 여부 명시적 처리
+  options?: string[]; // for select, radio, checkbox
+  regexPattern?: string; // 전화번호, 주민번호, 사업자번호 등 검증용
   privacyMasking?: boolean; // 비식별화 (마스킹) 플래그
   autoDismissSeconds?: number; // 팝업 토글 전용
   apiEndpoint?: string; // 외부 연동용

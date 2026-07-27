@@ -8,7 +8,7 @@ import {
   CheckSquare, Calendar, Upload, PenTool,
   Image as ImageIcon, Images, Video, Table, FileBox, MessageSquare, Link as LinkIcon,
   Layers, BellOff, ShieldAlert, Database, FileSpreadsheet, EyeOff, Save, ArrowUp, ArrowDown, Trash2, Plus,
-  Smartphone, Monitor, Globe
+  Smartphone, Monitor, Globe, Regex, MapPin
 } from 'lucide-react';
 import AiAutoGenerator from './AiAutoGenerator';
 
@@ -34,6 +34,8 @@ const FIELD_TYPES: { type: FieldType; label: string; icon: React.ReactNode }[] =
   { type: 'privacy-consent', label: '개인정보 동의서', icon: <ShieldAlert className="w-4 h-6 text-red-600" /> },
   { type: 'api-select', label: 'API 연동 리스트', icon: <Database className="w-4 h-4 text-amber-600" /> },
   { type: 'csv-select', label: 'CSV 붙여넣기', icon: <FileSpreadsheet className="w-4 h-4 text-amber-600" /> },
+  { type: 'regex-input', label: '정규식 검증 입력', icon: <Regex className="w-4 h-4 text-blue-600" /> },
+  { type: 'map-address', label: '주소 및 지도', icon: <MapPin className="w-4 h-4 text-green-600" /> },
 ];
 
 export default function FormBuilder() {
@@ -189,23 +191,64 @@ export default function FormBuilder() {
                         type="text" 
                         value={field.description || ''} 
                         onChange={(e) => updateField(field.id, { description: e.target.value })}
-                        className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         placeholder="이 항목에 대한 설명..."
                       />
                     </div>
                   </div>
-
-                  <div className="mt-4 flex items-center space-x-4">
-                    <div className="flex items-center space-x-4">
-                      <label className="flex items-center space-x-2 text-sm text-gray-700">
+                    
+                    <div className="flex items-center space-x-6 p-3 bg-gray-50 rounded border border-gray-200 mt-4">
+                      <label className="flex items-center space-x-2 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={field.required}
-                          onChange={(e) => updateField(field.id, { required: e.target.checked })}
-                          className="rounded text-blue-600"
+                          onChange={(e) => updateField(field.id, { required: e.target.checked, nullable: !e.target.checked })}
+                          className="rounded text-blue-600 focus:ring-blue-500"
                         />
-                        <span>필수입력</span>
+                        <span className="text-sm font-medium text-gray-700">필수 입력 (Required)</span>
                       </label>
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={field.nullable || !field.required}
+                          onChange={(e) => updateField(field.id, { nullable: e.target.checked, required: !e.target.checked })}
+                          className="rounded text-gray-500 focus:ring-blue-500"
+                        />
+                        <span className="text-sm font-medium text-gray-600">Null 허용 (Optional)</span>
+                      </label>
+                    </div>
+
+                    {/* Regex Specific Settings */}
+                    {field.type === 'regex-input' && (
+                      <div className="space-y-2 p-3 border border-blue-100 bg-blue-50 rounded mt-4">
+                        <label className="text-sm font-medium text-gray-700 flex items-center space-x-2">
+                          <Regex className="w-4 h-4 text-blue-600" />
+                          <span>정규식(Regex) 검증 패턴 설정</span>
+                        </label>
+                        <select
+                          className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 text-sm"
+                          value={field.regexPattern || ''}
+                          onChange={(e) => updateField(field.id, { regexPattern: e.target.value })}
+                        >
+                          <option value="">패턴 선택 (자유 입력)</option>
+                          <option value="^01(?:0|1|[6-9])-(?:\d{3}|\d{4})-\d{4}$">휴대폰 번호 (010-XXXX-XXXX)</option>
+                          <option value="^\d{2}[0-1]\d[0-3]\d-[1-4]\d{6}$">주민등록번호 (YYYYYY-XXXXXXX)</option>
+                          <option value="^\d{3}-\d{2}-\d{5}$">사업자등록번호 (XXX-XX-XXXXX)</option>
+                          <option value="^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$">이메일 주소</option>
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Map Specific Warning */}
+                    {field.type === 'map-address' && (
+                      <div className="p-3 bg-green-50 border border-green-200 rounded text-sm text-green-800 flex items-start space-x-2 mt-4">
+                        <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                        <span>입력된 주소를 기반으로 Google Maps 또는 네이버 지도의 핀이 자동으로 표시되는 복합 컴포넌트입니다.</span>
+                      </div>
+                    )}
+
+                  <div className="mt-4 flex items-center space-x-4">
+                    <div className="flex items-center space-x-4">
                       <label className="flex items-center space-x-2 text-sm text-gray-700">
                         <input
                           type="checkbox"
