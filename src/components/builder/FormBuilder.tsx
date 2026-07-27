@@ -6,8 +6,8 @@ import { FormField, FieldType, FormTemplate } from './types';
 import { 
   Type, AlignLeft, Hash, List, 
   CheckSquare, Calendar, Upload, PenTool,
-  Trash2, ArrowUp, ArrowDown, Plus, Save,
-  Image as ImageIcon, Images, Video, Table, FileBox, MessageSquare, Link as LinkIcon
+  Image as ImageIcon, Images, Video, Table, FileBox, MessageSquare, Link as LinkIcon,
+  Layers, BellOff, ShieldAlert, Database, FileSpreadsheet, EyeOff
 } from 'lucide-react';
 
 const FIELD_TYPES: { type: FieldType; label: string; icon: React.ReactNode }[] = [
@@ -27,6 +27,11 @@ const FIELD_TYPES: { type: FieldType; label: string; icon: React.ReactNode }[] =
   { type: 'nested-report', label: '하위 레포트', icon: <FileBox className="w-4 h-4 text-purple-600" /> },
   { type: 'report-link', label: '레포트 링크', icon: <LinkIcon className="w-4 h-4 text-purple-600" /> },
   { type: 'comment-thread', label: '댓글 코멘트', icon: <MessageSquare className="w-4 h-4 text-purple-600" /> },
+  { type: 'slide-card', label: '슬라이드 카드', icon: <Layers className="w-4 h-4 text-amber-600" /> },
+  { type: 'popup-toggle', label: '팝업(자동닫힘)', icon: <BellOff className="w-4 h-4 text-amber-600" /> },
+  { type: 'privacy-consent', label: '개인정보 동의서', icon: <ShieldAlert className="w-4 h-4 text-red-600" /> },
+  { type: 'api-select', label: 'API 연동 리스트', icon: <Database className="w-4 h-4 text-amber-600" /> },
+  { type: 'csv-select', label: 'CSV 붙여넣기', icon: <FileSpreadsheet className="w-4 h-4 text-amber-600" /> },
 ];
 
 export default function FormBuilder() {
@@ -174,15 +179,27 @@ export default function FormBuilder() {
                   </div>
 
                   <div className="mt-4 flex items-center space-x-4">
-                    <label className="flex items-center space-x-2 text-sm text-gray-700">
-                      <input 
-                        type="checkbox" 
-                        checked={field.required}
-                        onChange={(e) => updateField(field.id, { required: e.target.checked })}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span>필수 입력</span>
-                    </label>
+                    <div className="flex items-center space-x-4">
+                      <label className="flex items-center space-x-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={field.required}
+                          onChange={(e) => updateField(field.id, { required: e.target.checked })}
+                          className="rounded text-blue-600"
+                        />
+                        <span>필수입력</span>
+                      </label>
+                      <label className="flex items-center space-x-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={field.privacyMasking || false}
+                          onChange={(e) => updateField(field.id, { privacyMasking: e.target.checked })}
+                          className="rounded text-red-600"
+                        />
+                        <EyeOff className="w-4 h-4 text-gray-500" />
+                        <span>데이터 비식별화 (마스킹)</span>
+                      </label>
+                    </div>
                     <span className="text-xs font-medium px-2 py-1 bg-blue-100 text-blue-800 rounded">
                       타입: {FIELD_TYPES.find(t => t.type === field.type)?.label}
                     </span>
