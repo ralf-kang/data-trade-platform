@@ -11,7 +11,8 @@ import {
   ShieldAlert, 
   Shield, 
   CreditCard,
-  Settings
+  Settings,
+  Database
 } from 'lucide-react';
 
 interface AdminSidebarProps {
@@ -25,6 +26,7 @@ export function AdminSidebar({ role = 'admin' }: AdminSidebarProps) {
     { name: '대시보드 메인', href: '/admin/dashboard', icon: LayoutDashboard },
     { name: '내 양식 관리', href: '/admin/templates', icon: FileText },
     { name: '배포 URL 관리', href: '/admin/templates/urls', icon: Globe },
+    { name: '제출 데이터 조회', href: '/admin/data', icon: Database },
     { name: '공유 신청 및 승인함', href: '/admin/share-requests', icon: Users },
   ];
 
