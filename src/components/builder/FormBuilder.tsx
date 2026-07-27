@@ -7,8 +7,9 @@ import {
   Type, AlignLeft, Hash, List, 
   CheckSquare, Calendar, Upload, PenTool,
   Image as ImageIcon, Images, Video, Table, FileBox, MessageSquare, Link as LinkIcon,
-  Layers, BellOff, ShieldAlert, Database, FileSpreadsheet, EyeOff
+  Layers, BellOff, ShieldAlert, Database, FileSpreadsheet, EyeOff, Save, ArrowUp, ArrowDown, Trash2, Plus
 } from 'lucide-react';
+import AiAutoGenerator from './AiAutoGenerator';
 
 const FIELD_TYPES: { type: FieldType; label: string; icon: React.ReactNode }[] = [
   { type: 'text', label: '단답형', icon: <Type className="w-4 h-4" /> },
@@ -105,6 +106,8 @@ export default function FormBuilder() {
       <div className="flex-1 p-8 overflow-y-auto">
         <div className="max-w-3xl mx-auto bg-white rounded-lg shadow-sm p-6 border border-gray-200">
           
+          <AiAutoGenerator onGenerated={(newFields) => setTemplate(prev => ({ ...prev, fields: [...(prev.fields || []), ...newFields] }))} />
+
           <div className="flex justify-between items-center mb-6 border-b pb-4">
             <h1 className="text-2xl font-bold text-gray-900">보고서 양식 편집기</h1>
             <button 
