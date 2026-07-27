@@ -19,6 +19,7 @@ export interface FormField {
   placeholder?: string;
   required: boolean;
   nullable?: boolean; // Null 허용 여부 명시적 처리
+  width?: '100%' | '50%'; // 레이아웃 조절용 (전체 너비 vs 절반 너비)
   options?: string[]; // for select, radio, checkbox
   regexPattern?: string; // 전화번호, 주민번호, 사업자번호 등 검증용
   privacyMasking?: boolean; // 비식별화 (마스킹) 플래그

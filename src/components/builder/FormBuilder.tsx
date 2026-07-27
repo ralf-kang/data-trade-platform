@@ -8,7 +8,7 @@ import {
   CheckSquare, Calendar, Upload, PenTool,
   Image as ImageIcon, Images, Video, Table, FileBox, MessageSquare, Link as LinkIcon,
   Layers, BellOff, ShieldAlert, Database, FileSpreadsheet, EyeOff, Save, ArrowUp, ArrowDown, Trash2, Plus,
-  Smartphone, Monitor, Globe, Regex, MapPin
+  Smartphone, Monitor, Globe, Regex, MapPin, CheckSquare as CheckIcon, LayoutGrid, Star, GripHorizontal
 } from 'lucide-react';
 import AiAutoGenerator from './AiAutoGenerator';
 
@@ -45,47 +45,99 @@ export default function FormBuilder() {
     fields: []
   });
 
+  const fields = template.fields || [];
+  const setFields = (newFields: FormField[]) => setTemplate(prev => ({ ...prev, fields: newFields }));
+
   // Preview Modal State
   const [showPreview, setShowPreview] = useState(false);
   const [previewMode, setPreviewMode] = useState<'mobile' | 'pc' | 'hybrid'>('hybrid');
+
+  // Bulk Selection State
+  const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set());
+
+  // Drag and Drop (Simple Sort State)
+  const [draggedFieldId, setDraggedFieldId] = useState<string | null>(null);
 
   const addField = (type: FieldType) => {
     const newField: FormField = {
       id: uuidv4(),
       type,
-      label: '새로운 ' + FIELD_TYPES.find(f => f.type === type)?.label,
+      label: '새 항목',
       required: false,
-      options: ['옵션 1', '옵션 2'] // default for options-based fields
+      nullable: true,
+      width: '100%',
+      options: ['옵션 1', '옵션 2']
     };
-    setTemplate(prev => ({ ...prev, fields: [...(prev.fields || []), newField] }));
+    setFields([...fields, newField]);
+  };
+
+  const addFavoriteBlock = () => {
+    // 예제: 인적사항 세트 (이름, 연락처, 주소)
+    const block: FormField[] = [
+      { id: uuidv4(), type: 'text', label: '성명', required: true, width: '50%' },
+      { id: uuidv4(), type: 'regex-input', label: '휴대폰 번호', required: true, regexPattern: '^01(?:0|1|[6-9])-(?:\\d{3}|\\d{4})-\\d{4}$', width: '50%' },
+      { id: uuidv4(), type: 'map-address', label: '거주지 주소', required: true, width: '100%' },
+    ];
+    setFields([...fields, ...block]);
+  };
+
+  const toggleSelection = (id: string, multi: boolean) => {
+    const newSet = new Set(multi ? selectedFields : []);
+    if (newSet.has(id)) {
+      newSet.delete(id);
+    } else {
+      newSet.add(id);
+    }
+    setSelectedFields(newSet);
+  };
+
+  const selectAll = () => {
+    if (selectedFields.size === fields.length) {
+      setSelectedFields(new Set());
+    } else {
+      setSelectedFields(new Set(fields.map(f => f.id)));
+    }
+  };
+
+  const handleBulkAction = (action: 'require' | 'optional' | 'delete') => {
+    if (selectedFields.size === 0) return;
+    
+    if (action === 'delete') {
+      if(confirm(`선택한 ${selectedFields.size}개 필드를 정말 삭제하시겠습니까?`)) {
+        setFields(fields.filter(f => !selectedFields.has(f.id)));
+        setSelectedFields(new Set());
+      }
+      return;
+    }
+
+    setFields(fields.map(field => {
+      if (selectedFields.has(field.id)) {
+        if (action === 'require') return { ...field, required: true, nullable: false };
+        if (action === 'optional') return { ...field, required: false, nullable: true };
+      }
+      return field;
+    }));
   };
 
   const removeField = (id: string) => {
-    setTemplate(prev => ({
-      ...prev,
-      fields: (prev.fields || []).filter(f => f.id !== id)
-    }));
+    setFields(fields.filter(f => f.id !== id));
   };
 
   const moveField = (index: number, direction: 'up' | 'down') => {
-    const fields = [...(template.fields || [])];
+    const newFields = [...fields];
     if (direction === 'up' && index > 0) {
-      [fields[index - 1], fields[index]] = [fields[index], fields[index - 1]];
-    } else if (direction === 'down' && index < fields.length - 1) {
-      [fields[index + 1], fields[index]] = [fields[index], fields[index + 1]];
+      [newFields[index - 1], newFields[index]] = [newFields[index], newFields[index - 1]];
+    } else if (direction === 'down' && index < newFields.length - 1) {
+      [newFields[index + 1], newFields[index]] = [newFields[index], newFields[index + 1]];
     }
-    setTemplate(prev => ({ ...prev, fields }));
+    setFields(newFields);
   };
 
   const updateField = (id: string, updates: Partial<FormField>) => {
-    setTemplate(prev => ({
-      ...prev,
-      fields: (prev.fields || []).map(f => f.id === id ? { ...f, ...updates } : f)
-    }));
+    setFields(fields.map(f => f.id === id ? { ...f, ...updates } : f));
   };
 
   const handleSave = async () => {
-    // API call to save template
     console.log('Saving template:', template);
     alert('저장되었습니다. (콘솔 확인)');
   };
@@ -95,7 +147,7 @@ export default function FormBuilder() {
       {/* Sidebar: Toolbox */}
       <div className="w-64 bg-white border-r p-4 overflow-y-auto">
         <h2 className="text-lg font-bold mb-4 text-gray-800">양식 도구</h2>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-2 mb-6">
           {FIELD_TYPES.map((ft) => (
             <button
               key={ft.type}
@@ -107,207 +159,140 @@ export default function FormBuilder() {
             </button>
           ))}
         </div>
+        <div className="p-4 bg-gray-50 border-t border-gray-200">
+          <h3 className="font-semibold text-gray-700 text-sm mb-3">즐겨찾기 블록 / 추천</h3>
+          <button 
+            onClick={addFavoriteBlock}
+            className="w-full flex items-center justify-center space-x-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 p-3 rounded-lg transition-colors"
+          >
+            <Star className="w-4 h-4" />
+            <span className="font-medium text-sm">인적사항 세트 (이름+연락처+주소) 추가</span>
+          </button>
+        </div>
       </div>
 
-      {/* Main Canvas */}
-      <div className="flex-1 p-8 overflow-y-auto">
-        <div className="max-w-3xl mx-auto bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-          
-          <AiAutoGenerator onGenerated={(newFields) => setTemplate(prev => ({ ...prev, fields: [...(prev.fields || []), ...newFields] }))} />
+      {/* Main Content - Canvas */}
+      <div className="flex-1 bg-gray-100 overflow-y-auto p-8 relative">
+        {/* Bulk Action Bar (Floating) */}
+        {selectedFields.size > 0 && (
+          <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-6 py-4 rounded-full shadow-2xl z-40 flex items-center space-x-6">
+            <span className="font-bold">{selectedFields.size}개 선택됨</span>
+            <div className="flex space-x-3 border-l border-gray-700 pl-6">
+              <button onClick={() => handleBulkAction('require')} className="text-sm font-medium hover:text-blue-300">모두 필수로 변경</button>
+              <button onClick={() => handleBulkAction('optional')} className="text-sm font-medium hover:text-gray-300">모두 선택(Null)으로 변경</button>
+              <button onClick={() => handleBulkAction('delete')} className="text-sm font-medium text-red-400 hover:text-red-300 border-l border-gray-700 pl-3">일괄 삭제</button>
+            </div>
+            <button onClick={() => setSelectedFields(new Set())} className="ml-4 text-gray-400 hover:text-white">✕</button>
+          </div>
+        )}
 
-          <div className="flex justify-between items-center mb-6 border-b pb-4">
-            <h1 className="text-2xl font-bold text-gray-900">보고서 양식 편집기</h1>
-            <div className="flex space-x-2">
-              <button 
-                onClick={() => setShowPreview(true)}
-                className="flex items-center space-x-2 px-4 py-2 bg-indigo-100 text-indigo-700 rounded hover:bg-indigo-200 transition-colors"
-              >
-                <Globe className="w-4 h-4" />
-                <span>배포 사전 확인 (Preview)</span>
-              </button>
-              <button 
-                onClick={handleSave}
-                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-              >
-                <Save className="w-4 h-4" />
-                <span>양식 저장하기</span>
+        <div className="max-w-4xl mx-auto">
+          <AiAutoGenerator onGenerated={(newFields) => setFields([...fields, ...newFields])} />
+
+          <div className="bg-white rounded-xl shadow-md border border-gray-200 min-h-[600px] p-8">
+            <div className="flex justify-between items-center mb-6 border-b pb-4">
+              <h1 className="text-2xl font-bold text-gray-900">보고서 양식 편집기</h1>
+              <div className="flex space-x-2">
+                <button onClick={() => setShowPreview(true)} className="flex items-center space-x-2 px-4 py-2 bg-indigo-100 text-indigo-700 rounded hover:bg-indigo-200 transition-colors">
+                  <Globe className="w-4 h-4" />
+                  <span>배포 사전 확인</span>
+                </button>
+                <button onClick={handleSave} className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">
+                  <Save className="w-4 h-4" />
+                  <span>양식 저장</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-4 mb-8">
+              <input type="text" placeholder="보고서 제목" className="w-full text-3xl font-bold border-0 border-b-2 border-transparent hover:border-gray-200 focus:border-blue-500 outline-none" value={template.title} onChange={(e) => setTemplate({ ...template, title: e.target.value })} />
+              <textarea placeholder="보고서 설명" className="w-full text-gray-600 border-0 border-b-2 border-transparent hover:border-gray-200 focus:border-blue-500 outline-none resize-none" value={template.description} onChange={(e) => setTemplate({ ...template, description: e.target.value })} rows={2} />
+            </div>
+
+            <div className="flex justify-between items-center mt-8">
+              <h2 className="text-lg font-bold text-gray-800">입력 항목 구성</h2>
+              <button onClick={selectAll} className="text-sm text-indigo-600 hover:underline">
+                {selectedFields.size === fields.length && fields.length > 0 ? '전체 선택 해제' : '전체 선택'}
               </button>
             </div>
-          </div>
-
-          <div className="space-y-4 mb-8">
-            <input
-              type="text"
-              placeholder="보고서 제목"
-              className="w-full text-3xl font-bold border-0 border-b-2 border-transparent hover:border-gray-200 focus:border-blue-500 focus:ring-0 px-0 py-2 outline-none"
-              value={template.title}
-              onChange={(e) => setTemplate({ ...template, title: e.target.value })}
-            />
-            <textarea
-              placeholder="보고서 설명"
-              className="w-full text-gray-600 border-0 border-b-2 border-transparent hover:border-gray-200 focus:border-blue-500 focus:ring-0 px-0 py-2 outline-none resize-none"
-              value={template.description}
-              onChange={(e) => setTemplate({ ...template, description: e.target.value })}
-              rows={2}
-            />
-          </div>
-
-          <div className="space-y-6">
-            {(template.fields || []).length === 0 ? (
-              <div className="text-center py-12 border-2 border-dashed border-gray-300 rounded-lg text-gray-500">
-                좌측 패널에서 도구를 클릭하여 양식을 추가하세요.
-              </div>
-            ) : (
-              (template.fields || []).map((field, index) => (
-                <div key={field.id} className="relative group border border-gray-200 rounded-lg p-4 bg-gray-50 hover:border-blue-400 transition-colors">
-                  
-                  {/* Field Actions */}
-                  <div className="absolute top-2 right-2 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => moveField(index, 'up')} className="p-1 text-gray-500 hover:text-blue-600 bg-white rounded shadow-sm" disabled={index === 0}>
-                      <ArrowUp className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => moveField(index, 'down')} className="p-1 text-gray-500 hover:text-blue-600 bg-white rounded shadow-sm" disabled={index === (template.fields?.length || 0) - 1}>
-                      <ArrowDown className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => removeField(field.id)} className="p-1 text-gray-500 hover:text-red-600 bg-white rounded shadow-sm">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  {/* Field Editor */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">항목 이름</label>
-                      <input 
-                        type="text" 
-                        value={field.label} 
-                        onChange={(e) => updateField(field.id, { label: e.target.value })}
-                        className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">설명 (선택)</label>
-                      <input 
-                        type="text" 
-                        value={field.description || ''} 
-                        onChange={(e) => updateField(field.id, { description: e.target.value })}
-                        className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder="이 항목에 대한 설명..."
-                      />
-                    </div>
-                  </div>
-                    
-                    <div className="flex items-center space-x-6 p-3 bg-gray-50 rounded border border-gray-200 mt-4">
-                      <label className="flex items-center space-x-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={field.required}
-                          onChange={(e) => updateField(field.id, { required: e.target.checked, nullable: !e.target.checked })}
-                          className="rounded text-blue-600 focus:ring-blue-500"
-                        />
-                        <span className="text-sm font-medium text-gray-700">필수 입력 (Required)</span>
-                      </label>
-                      <label className="flex items-center space-x-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={field.nullable || !field.required}
-                          onChange={(e) => updateField(field.id, { nullable: e.target.checked, required: !e.target.checked })}
-                          className="rounded text-gray-500 focus:ring-blue-500"
-                        />
-                        <span className="text-sm font-medium text-gray-600">Null 허용 (Optional)</span>
-                      </label>
-                    </div>
-
-                    {/* Regex Specific Settings */}
-                    {field.type === 'regex-input' && (
-                      <div className="space-y-2 p-3 border border-blue-100 bg-blue-50 rounded mt-4">
-                        <label className="text-sm font-medium text-gray-700 flex items-center space-x-2">
-                          <Regex className="w-4 h-4 text-blue-600" />
-                          <span>정규식(Regex) 검증 패턴 설정</span>
-                        </label>
-                        <select
-                          className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 text-sm"
-                          value={field.regexPattern || ''}
-                          onChange={(e) => updateField(field.id, { regexPattern: e.target.value })}
-                        >
-                          <option value="">패턴 선택 (자유 입력)</option>
-                          <option value="^01(?:0|1|[6-9])-(?:\d{3}|\d{4})-\d{4}$">휴대폰 번호 (010-XXXX-XXXX)</option>
-                          <option value="^\d{2}[0-1]\d[0-3]\d-[1-4]\d{6}$">주민등록번호 (YYYYYY-XXXXXXX)</option>
-                          <option value="^\d{3}-\d{2}-\d{5}$">사업자등록번호 (XXX-XX-XXXXX)</option>
-                          <option value="^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$">이메일 주소</option>
-                        </select>
+            
+            <div className="flex flex-wrap -mx-2 mt-4">
+              {fields.map((field, index) => {
+                const isSelected = selectedFields.has(field.id);
+                return (
+                  <div key={field.id} className={`p-2 transition-all duration-200 ${field.width === '50%' ? 'w-1/2' : 'w-full'}`}>
+                    <div className={`p-5 rounded-lg border-2 ${isSelected ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 bg-white hover:border-gray-300'} shadow-sm relative group`}>
+                      <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <input type="checkbox" className="w-5 h-5 text-indigo-600 rounded border-gray-300 cursor-pointer" checked={isSelected} onChange={() => toggleSelection(field.id, true)} />
                       </div>
-                    )}
-
-                    {/* Map Specific Warning */}
-                    {field.type === 'map-address' && (
-                      <div className="p-3 bg-green-50 border border-green-200 rounded text-sm text-green-800 flex items-start space-x-2 mt-4">
-                        <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                        <span>입력된 주소를 기반으로 Google Maps 또는 네이버 지도의 핀이 자동으로 표시되는 복합 컴포넌트입니다.</span>
+                      <div className="absolute top-3 right-12 text-gray-300 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity">
+                        <GripHorizontal className="w-5 h-5" />
                       </div>
-                    )}
 
-                  <div className="mt-4 flex items-center space-x-4">
-                    <div className="flex items-center space-x-4">
-                      <label className="flex items-center space-x-2 text-sm text-gray-700">
-                        <input
-                          type="checkbox"
-                          checked={field.privacyMasking || false}
-                          onChange={(e) => updateField(field.id, { privacyMasking: e.target.checked })}
-                          className="rounded text-red-600"
-                        />
-                        <EyeOff className="w-4 h-4 text-gray-500" />
-                        <span>데이터 비식별화 (마스킹)</span>
-                      </label>
-                    </div>
-                    <span className="text-xs font-medium px-2 py-1 bg-blue-100 text-blue-800 rounded">
-                      타입: {FIELD_TYPES.find(t => t.type === field.type)?.label}
-                    </span>
-                  </div>
+                      <div className="absolute top-2 right-2 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => moveField(index, 'up')} className="p-1 text-gray-500 hover:text-blue-600 bg-white rounded shadow-sm" disabled={index === 0}><ArrowUp className="w-4 h-4" /></button>
+                        <button onClick={() => moveField(index, 'down')} className="p-1 text-gray-500 hover:text-blue-600 bg-white rounded shadow-sm" disabled={index === fields.length - 1}><ArrowDown className="w-4 h-4" /></button>
+                        <button onClick={() => removeField(field.id)} className="p-1 text-gray-500 hover:text-red-600 bg-white rounded shadow-sm"><Trash2 className="w-4 h-4" /></button>
+                      </div>
 
-                  {/* Options Editor for Select/Radio/Checkbox */}
-                  {['select', 'radio', 'checkbox'].includes(field.type) && (
-                    <div className="mt-4 p-3 bg-white border rounded">
-                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">선택지 관리</label>
-                      <div className="space-y-2">
-                        {field.options?.map((opt, i) => (
-                          <div key={i} className="flex items-center space-x-2">
-                            <input 
-                              type="text"
-                              value={opt}
-                              onChange={(e) => {
-                                const newOpts = [...(field.options || [])];
-                                newOpts[i] = e.target.value;
-                                updateField(field.id, { options: newOpts });
-                              }}
-                              className="flex-1 p-1.5 text-sm border-b border-gray-200 focus:border-blue-500 outline-none"
-                            />
-                            <button 
-                              onClick={() => {
-                                const newOpts = field.options?.filter((_, idx) => idx !== i);
-                                updateField(field.id, { options: newOpts });
-                              }}
-                              className="text-red-400 hover:text-red-600"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 uppercase">항목 이름</label>
+                          <input type="text" value={field.label} onChange={(e) => updateField(field.id, { label: e.target.value })} className="w-full p-2 border rounded" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 uppercase">설명 (선택)</label>
+                          <input type="text" value={field.description || ''} onChange={(e) => updateField(field.id, { description: e.target.value })} className="w-full p-2 border rounded" />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg border border-gray-200 mt-4">
+                        <div className="flex flex-col space-y-3">
+                          <h4 className="text-xs font-bold text-gray-500 uppercase">입력 강제 옵션</h4>
+                          <label className="flex items-center space-x-2"><input type="checkbox" checked={field.required} onChange={(e) => updateField(field.id, { required: e.target.checked, nullable: !e.target.checked })} /> <span className="text-sm">필수</span></label>
+                        </div>
+                        <div className="flex flex-col space-y-3">
+                          <h4 className="text-xs font-bold text-gray-500 uppercase">레이아웃</h4>
+                          <div className="flex space-x-2">
+                            <button onClick={() => updateField(field.id, { width: '100%' })} className={`px-2 py-1 text-xs rounded border ${field.width === '100%' ? 'bg-indigo-50' : ''}`}>100%</button>
+                            <button onClick={() => updateField(field.id, { width: '50%' })} className={`px-2 py-1 text-xs rounded border ${field.width === '50%' ? 'bg-indigo-50' : ''}`}>50%</button>
                           </div>
-                        ))}
-                        <button 
-                          onClick={() => {
-                            updateField(field.id, { options: [...(field.options || []), `옵션 ${(field.options?.length || 0) + 1}`] });
-                          }}
-                          className="text-sm text-blue-600 hover:text-blue-800 flex items-center mt-2"
-                        >
-                          <Plus className="w-3 h-3 mr-1" /> 선택지 추가
-                        </button>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                      
+                      {/* Regex Specific Settings */}
+                      {field.type === 'regex-input' && (
+                        <div className="space-y-2 p-3 border border-blue-100 bg-blue-50 rounded mt-4">
+                          <label className="text-sm font-medium text-gray-700 flex items-center space-x-2">
+                            <Regex className="w-4 h-4 text-blue-600" />
+                            <span>정규식(Regex) 검증 패턴 설정</span>
+                          </label>
+                          <select
+                            className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 text-sm"
+                            value={field.regexPattern || ''}
+                            onChange={(e) => updateField(field.id, { regexPattern: e.target.value })}
+                          >
+                            <option value="">패턴 선택 (자유 입력)</option>
+                            <option value="^01(?:0|1|[6-9])-(?:\d{3}|\d{4})-\d{4}$">휴대폰 번호 (010-XXXX-XXXX)</option>
+                            <option value="^\d{2}[0-1]\d[0-3]\d-[1-4]\d{6}$">주민등록번호 (YYYYYY-XXXXXXX)</option>
+                            <option value="^\d{3}-\d{2}-\d{5}$">사업자등록번호 (XXX-XX-XXXXX)</option>
+                            <option value="^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$">이메일 주소</option>
+                          </select>
+                        </div>
+                      )}
 
-                </div>
-              ))
-            )}
+                      {/* Map Specific Warning */}
+                      {field.type === 'map-address' && (
+                        <div className="p-3 bg-green-50 border border-green-200 rounded text-sm text-green-800 flex items-start space-x-2 mt-4">
+                          <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                          <span>입력된 주소를 기반으로 Google Maps 또는 네이버 지도의 핀이 자동으로 표시되는 복합 컴포넌트입니다.</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
@@ -374,14 +359,16 @@ export default function FormBuilder() {
                   {fields.length === 0 ? (
                     <div className="text-center text-gray-400 py-20">양식 내용이 없습니다.</div>
                   ) : (
-                    <div className="space-y-6">
+                    <div className="flex flex-wrap -mx-2">
                       {fields.map(field => (
-                        <div key={field.id} className="flex flex-col space-y-2">
-                          <label className="font-medium text-gray-700">
-                            {field.label} {field.required && <span className="text-red-500">*</span>}
-                          </label>
-                          <div className="p-3 border border-gray-200 rounded-md bg-gray-50 text-gray-400 text-sm">
-                            {FIELD_TYPES.find(t => t.type === field.type)?.label} 입력란 (미리보기)
+                        <div key={field.id} className={`p-2 ${previewMode === 'mobile' ? 'w-full' : (field.width === '50%' ? 'w-1/2' : 'w-full')}`}>
+                          <div className="flex flex-col space-y-2">
+                            <label className="font-medium text-gray-700">
+                              {field.label} {field.required && <span className="text-red-500">*</span>}
+                            </label>
+                            <div className="p-3 border border-gray-200 rounded-md bg-gray-50 text-gray-400 text-sm">
+                              {FIELD_TYPES.find(t => t.type === field.type)?.label} 입력란
+                            </div>
                           </div>
                         </div>
                       ))}
