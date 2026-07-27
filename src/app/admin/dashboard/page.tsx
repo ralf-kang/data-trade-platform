@@ -5,46 +5,28 @@ import { LayoutDashboard, Users, FileText, ArrowUpRight, TrendingUp, Copy, Shiel
 import Link from 'next/link';
 
 export default function AdminDashboardPage() {
-  // Mock Data for Popular Forms Widget
   const [popularForms] = useState([
-    { id: 'f-101', title: '2024 하반기 고객 만족도 조사', owner: '마케팅팀 김민수', submissions: 1450, growth: '+12%' },
-    { id: 'f-102', title: '신규 입사자 온보딩 피드백', owner: '인사팀 이영희', submissions: 890, growth: '+5%' },
-    { id: 'f-103', title: '영업본부 주간 실적 취합 양식', owner: '영업본부 박철수', submissions: 420, growth: '+2%' },
-    { id: 'f-104', title: 'IT 장비 지급 요청서 (보안동의서 포함)', owner: 'IT지원팀 정대만', submissions: 215, growth: '-1%' },
+    { id: 'f-101', title: '2024 하반기 고객 만족도 조사', owner: '마케팅팀 김민수', submissions: 4, growth: '+12%' },
+    { id: 'f-102', title: '신규 입사자 온보딩 피드백', owner: '인사팀 이영희', submissions: 2, growth: '+5%' },
+    { id: 'f-104', title: 'IT 장비 지급 요청서 (보안동의서 포함)', owner: 'IT지원팀 정대만', submissions: 2, growth: '-1%' },
   ]);
 
-  const handleRequestShare = (title: string) => {
-    alert(`[${title}] 양식의 원작자에게 공유(복사) 권한을 요청했습니다.\n관리자의 승인이 완료되면 알림이 발송됩니다.`);
+  const handleRequestShare = (form: typeof popularForms[0]) => {
+    const existing = JSON.parse(localStorage.getItem('shareRequests') || '[]');
+    const newRequest = {
+      id: `req-${Date.now()}`,
+      to: form.owner,
+      targetForm: `${form.title} (${form.id})`,
+      date: new Date().toLocaleString('ko-KR', { hour12: false }).slice(0, 16),
+      status: 'PENDING',
+      type: 'SENT'
+    };
+    localStorage.setItem('shareRequests', JSON.stringify([...existing, newRequest]));
+    alert(`[${form.title}] 양식의 원작자에게 공유(복사) 권한을 요청했습니다.\n"공유 신청 및 승인함" 메뉴에서 확인하실 수 있습니다.`);
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      {/* Sidebar (Admin Nav) */}
-      <div className="w-64 bg-slate-900 text-white flex flex-col hidden md:flex">
-        <div className="p-6 border-b border-slate-800">
-          <h2 className="text-xl font-bold flex items-center">
-            <Shield className="w-6 h-6 mr-2 text-indigo-400" />
-            Admin Portal
-          </h2>
-          <p className="text-xs text-slate-400 mt-2">일반 관리자 워크스페이스</p>
-        </div>
-        <nav className="flex-1 py-4">
-          <Link href="/admin/dashboard" className="flex items-center px-6 py-3 bg-indigo-600 border-l-4 border-indigo-400 text-white font-medium">
-            <LayoutDashboard className="w-5 h-5 mr-3" /> 대시보드 메인
-          </Link>
-          <Link href="/admin/templates" className="flex items-center px-6 py-3 text-slate-300 hover:bg-slate-800 hover:text-white transition-colors">
-            <FileText className="w-5 h-5 mr-3" /> 내 양식 관리
-          </Link>
-          <Link href="/admin/templates/urls" className="flex items-center px-6 py-3 text-slate-300 hover:bg-slate-800 hover:text-white transition-colors">
-            <Globe className="w-5 h-5 mr-3" /> 배포 URL 관리
-          </Link>
-          <Link href="/admin/share-requests" className="flex items-center px-6 py-3 text-slate-300 hover:bg-slate-800 hover:text-white transition-colors">
-            <Users className="w-5 h-5 mr-3" /> 공유 신청 및 승인함
-          </Link>
-        </nav>
-      </div>
-
-      {/* Main Content */}
+    <div className="flex-1 overflow-y-auto bg-gray-50 p-8 min-h-screen">
       <div className="flex-1 overflow-y-auto p-8">
         <div className="max-w-6xl mx-auto">
           <div className="flex justify-between items-center mb-8">
@@ -118,7 +100,7 @@ export default function AdminDashboardPage() {
                       </div>
                     </div>
                     <button 
-                      onClick={() => handleRequestShare(form.title)}
+                      onClick={() => handleRequestShare(form)}
                       className="px-4 py-2 flex items-center text-sm font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors border border-indigo-200"
                     >
                       <Copy className="w-4 h-4 mr-2" />
@@ -140,5 +122,4 @@ export default function AdminDashboardPage() {
   );
 }
 
-// Need to import Globe for the sidebar
-import { Globe } from 'lucide-react';
+// No globe import needed here now

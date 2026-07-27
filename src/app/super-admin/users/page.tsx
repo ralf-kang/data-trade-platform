@@ -15,6 +15,7 @@ const MOCK_USERS = [
 export default function AdminUsersManagementPage() {
   const [users, setUsers] = useState(MOCK_USERS);
   const [inviteEmail, setInviteEmail] = useState('');
+  const [editingUser, setEditingUser] = useState<typeof MOCK_USERS[0] | null>(null);
 
   const handleInvite = (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,7 +27,26 @@ export default function AdminUsersManagementPage() {
   const handleStatusToggle = (id: string, currentStatus: string) => {
     const newStatus = currentStatus === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
     setUsers(users.map(u => u.id === id ? { ...u, status: newStatus } : u));
+    if (editingUser?.id === id) setEditingUser({ ...editingUser, status: newStatus });
     alert(`계정 상태가 [${newStatus}]로 변경되었습니다.`);
+  };
+
+  const handleResetPassword = (id: string, name: string) => {
+    if (confirm(`[${name}] 관리자의 비밀번호를 초기화하시겠습니까?\n임시 비밀번호가 해당 이메일로 발송됩니다.`)) {
+      alert('비밀번호가 초기화되었습니다.');
+    }
+  };
+
+  const handleRoleChange = (id: string, currentRole: string, name: string) => {
+    if (currentRole === 'SUPER_ADMIN') {
+      alert('최고 관리자의 권한은 여기서 변경할 수 없습니다.');
+      return;
+    }
+    if (confirm(`[${name}] 관리자를 최고 관리자(SUPER_ADMIN)로 승급하시겠습니까?`)) {
+      setUsers(users.map(u => u.id === id ? { ...u, role: 'SUPER_ADMIN' } : u));
+      if (editingUser?.id === id) setEditingUser({ ...editingUser, role: 'SUPER_ADMIN' });
+      alert('승급이 완료되었습니다.');
+    }
   };
 
   const handleDelete = (id: string, role: string) => {
@@ -36,6 +56,7 @@ export default function AdminUsersManagementPage() {
     }
     if (confirm('해당 관리자 계정을 완전히 삭제하시겠습니까?\n생성된 양식지 소유권 이전이 필요할 수 있습니다.')) {
       setUsers(users.filter(u => u.id !== id));
+      setEditingUser(null);
     }
   };
 
@@ -147,20 +168,12 @@ export default function AdminUsersManagementPage() {
                             </span>
                           )}
                         </td>
-                        <td className="px-6 py-4 text-right space-x-3">
+                        <td className="px-6 py-4 text-right">
                           <button 
-                            onClick={() => handleStatusToggle(user.id, user.status)}
-                            disabled={user.role === 'SUPER_ADMIN'}
-                            className={`text-sm font-medium ${user.status === 'ACTIVE' ? 'text-amber-600 hover:text-amber-800' : 'text-emerald-600 hover:text-emerald-800'} disabled:opacity-30`}
+                            onClick={() => setEditingUser(user)}
+                            className="px-4 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded text-sm font-bold transition-colors"
                           >
-                            {user.status === 'ACTIVE' ? '계정 정지' : '정지 해제'}
-                          </button>
-                          <button 
-                            onClick={() => handleDelete(user.id, user.role)}
-                            disabled={user.role === 'SUPER_ADMIN'}
-                            className="text-sm font-medium text-rose-600 hover:text-rose-800 disabled:opacity-30"
-                          >
-                            삭제
+                            정보 수정
                           </button>
                         </td>
                       </tr>
@@ -173,6 +186,100 @@ export default function AdminUsersManagementPage() {
 
         </div>
       </div>
+
+      {/* Edit User Modal */}
+      {editingUser && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h2 className="text-xl font-bold text-slate-900 flex items-center">
+                <Users className="w-5 h-5 mr-2 text-indigo-600" />
+                사용자 정보 수정
+              </h2>
+              <button onClick={() => setEditingUser(null)} className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+            
+            <div className="p-6 space-y-6">
+              <div className="flex items-center space-x-4 mb-2">
+                <div className="w-16 h-16 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-2xl">
+                  {editingUser.name[0]}
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900">{editingUser.name}</h3>
+                  <p className="text-slate-500">{editingUser.email}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg flex justify-between items-center">
+                  <div>
+                    <h4 className="font-bold text-slate-800">계정 권한</h4>
+                    <p className="text-xs text-slate-500 mt-1">현재: {editingUser.role === 'SUPER_ADMIN' ? '최고 관리자' : '일반 관리자'}</p>
+                  </div>
+                  <button 
+                    onClick={() => handleRoleChange(editingUser.id, editingUser.role, editingUser.name)}
+                    disabled={editingUser.role === 'SUPER_ADMIN'}
+                    className="px-3 py-1.5 bg-white border border-indigo-200 text-indigo-600 text-sm font-bold rounded shadow-sm hover:bg-indigo-50 disabled:opacity-50"
+                  >
+                    최고 관리자로 승급
+                  </button>
+                </div>
+
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg flex justify-between items-center">
+                  <div>
+                    <h4 className="font-bold text-slate-800">보안 설정</h4>
+                    <p className="text-xs text-slate-500 mt-1">이메일로 임시 비밀번호를 발송합니다.</p>
+                  </div>
+                  <button 
+                    onClick={() => handleResetPassword(editingUser.id, editingUser.name)}
+                    disabled={editingUser.role === 'SUPER_ADMIN'}
+                    className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-sm font-bold rounded shadow-sm hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    비밀번호 초기화
+                  </button>
+                </div>
+
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg flex justify-between items-center">
+                  <div>
+                    <h4 className="font-bold text-amber-900">계정 상태</h4>
+                    <p className="text-xs text-amber-700 mt-1">현재: {editingUser.status === 'ACTIVE' ? '정상 활동 중' : '정지됨'}</p>
+                  </div>
+                  <button 
+                    onClick={() => handleStatusToggle(editingUser.id, editingUser.status)}
+                    disabled={editingUser.role === 'SUPER_ADMIN'}
+                    className={`px-3 py-1.5 bg-white border text-sm font-bold rounded shadow-sm disabled:opacity-50 ${editingUser.status === 'ACTIVE' ? 'border-amber-300 text-amber-600 hover:bg-amber-100' : 'border-emerald-300 text-emerald-600 hover:bg-emerald-100'}`}
+                  >
+                    {editingUser.status === 'ACTIVE' ? '계정 정지하기' : '정지 해제하기'}
+                  </button>
+                </div>
+
+                <div className="p-4 bg-rose-50 border border-rose-200 rounded-lg flex justify-between items-center">
+                  <div>
+                    <h4 className="font-bold text-rose-900">계정 삭제</h4>
+                    <p className="text-xs text-rose-700 mt-1">모든 데이터와 권한이 영구 삭제됩니다.</p>
+                  </div>
+                  <button 
+                    onClick={() => handleDelete(editingUser.id, editingUser.role)}
+                    disabled={editingUser.role === 'SUPER_ADMIN'}
+                    className="px-3 py-1.5 bg-white border border-rose-300 text-rose-600 text-sm font-bold rounded shadow-sm hover:bg-rose-100 disabled:opacity-50"
+                  >
+                    영구 삭제
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 text-right">
+              <button 
+                onClick={() => setEditingUser(null)} 
+                className="px-6 py-2 bg-slate-900 text-white font-bold rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

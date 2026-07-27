@@ -11,21 +11,34 @@ export default function LoginPage() {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [showMfa, setShowMfa] = useState(false);
   const [mfaCode, setMfaCode] = useState('');
+  
+  // Default credentials config
+  const DEFAULT_ID = 'ralfkang@ktl.re.kr';
+  const DEFAULT_PW = 'test1234';
+  const DEFAULT_MFA = '111111';
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (isSuperAdmin) {
-      // 2차 인증(MFA) 모달 표시
+      if (email !== DEFAULT_ID || password !== DEFAULT_PW) {
+        alert('이메일 또는 비밀번호가 일치하지 않습니다.\n(기본 계정: ralfkang@ktl.re.kr / test1234)');
+        return;
+      }
       setShowMfa(true);
     } else {
       // 일반 관리자 로그인 처리
+      document.cookie = "adminRole=admin; path=/";
       router.push('/admin/dashboard');
     }
   };
 
   const handleMfaSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // MFA 검증 로직 후 슈퍼관리자 대시보드로 이동
+    if (mfaCode !== DEFAULT_MFA) {
+      alert('MFA 코드가 일치하지 않습니다.\n(기본 MFA: 111111)');
+      return;
+    }
+    document.cookie = "adminRole=super-admin; path=/";
     router.push('/super-admin');
   };
 

@@ -1,26 +1,39 @@
 'use client';
 
 import { useState } from 'react';
-import { Link as LinkIcon, QrCode, Power, Eye, Copy, ExternalLink, Settings2, BarChart2 } from 'lucide-react';
+import { Link as LinkIcon, QrCode, Power, Eye, Copy, ExternalLink, Settings2, BarChart2, Database, Key } from 'lucide-react';
 import Link from 'next/link';
 
 const MOCK_URLS = [
-  { id: 'f-101', title: '2024 하반기 고객 만족도 조사', url: 'https://form.company.com/q/hx82ma', status: 'OPEN', views: 3420, submissions: 1450, lastUpdate: '2026-07-27 10:30' },
-  { id: 'f-102', title: '신규 입사자 온보딩 피드백', url: 'https://form.company.com/q/k9m2nx', status: 'OPEN', views: 1205, submissions: 890, lastUpdate: '2026-07-20 15:45' },
-  { id: 'f-103', title: '영업본부 주간 실적 취합 양식', url: 'https://form.company.com/q/p4L9qw', status: 'CLOSED', views: 500, submissions: 420, lastUpdate: '2026-07-10 18:00' },
+  { id: 'f-101', title: '2024 하반기 고객 만족도 조사', url: 'http://localhost:3000/q/f-101', status: 'OPEN', views: 342, submissions: 4, lastUpdate: '2026-07-27 10:30' },
+  { id: 'f-102', title: '신규 입사자 온보딩 피드백', url: 'http://localhost:3000/q/f-102', status: 'OPEN', views: 125, submissions: 2, lastUpdate: '2026-07-20 15:45' },
+  { id: 'f-104', title: 'IT 장비 지급 요청서 (보안동의서 포함)', url: 'http://localhost:3000/q/f-104', status: 'CLOSED', views: 50, submissions: 2, lastUpdate: '2026-07-10 18:00' },
+  { id: 'f-999', title: '종합 컴포넌트 테스트 양식지 (f-999)', url: 'http://localhost:3000/q/f-999', status: 'OPEN', views: 9210, submissions: 125, lastUpdate: '2026-07-27 17:30' },
 ];
 
 export default function UrlManagerPage() {
   const [urls, setUrls] = useState(MOCK_URLS);
+  const [qrModalUrl, setQrModalUrl] = useState<string | null>(null);
+  const [apiModalFormId, setApiModalFormId] = useState<string | null>(null);
+  const [generatedApis, setGeneratedApis] = useState<{ url: string, key: string }[]>([]);
 
   const toggleStatus = (id: string, currentStatus: string) => {
     const newStatus = currentStatus === 'OPEN' ? 'CLOSED' : 'OPEN';
     setUrls(urls.map(u => u.id === id ? { ...u, status: newStatus } : u));
   };
 
-  const handleCopy = (url: string) => {
-    navigator.clipboard.writeText(url);
-    alert('URL이 복사되었습니다.');
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    alert('클립보드에 복사되었습니다.');
+  };
+
+  const handleGenerateMultipleApis = () => {
+    // 다중 API 자동 생성 로직 (대용량 대응)
+    setGeneratedApis([
+      { url: `https://api.company.com/v1/forms/${apiModalFormId}/submit/node-a`, key: 'sk_live_x8F2j9aKd2' },
+      { url: `https://api.company.com/v1/forms/${apiModalFormId}/submit/node-b`, key: 'sk_live_v9N3m4pLq1' },
+      { url: `https://api.company.com/v1/forms/${apiModalFormId}/submit/node-c`, key: 'sk_live_z1C4b7vMw8' },
+    ]);
   };
 
   return (
@@ -98,6 +111,17 @@ export default function UrlManagerPage() {
 
                     <td className="px-6 py-4 text-right space-x-2">
                       <button 
+                        onClick={() => {
+                          setApiModalFormId(item.id);
+                          setGeneratedApis([{ url: `https://api.company.com/v1/forms/${item.id}/submit`, key: 'sk_live_a1b2c3d4e5' }]);
+                        }}
+                        className="p-2 text-slate-500 hover:text-indigo-600 bg-white border border-slate-200 rounded shadow-sm transition-colors"
+                        title="외부 연계 API 생성"
+                      >
+                        <Database className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => setQrModalUrl(item.url)}
                         className="p-2 text-slate-500 hover:text-indigo-600 bg-white border border-slate-200 rounded shadow-sm transition-colors"
                         title="QR 코드 생성"
                       >
@@ -124,6 +148,109 @@ export default function UrlManagerPage() {
             </table>
           </div>
         </div>
+        
+        {/* QR Code Modal */}
+        {qrModalUrl && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full text-center relative">
+              <button onClick={() => setQrModalUrl(null)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600">✕</button>
+              <div className="flex justify-center mb-4">
+                <div className="p-4 bg-indigo-50 rounded-full">
+                  <QrCode className="w-8 h-8 text-indigo-600" />
+                </div>
+              </div>
+              <h2 className="text-xl font-bold text-slate-900 mb-2">QR 코드 접속</h2>
+              <p className="text-sm text-slate-500 mb-6">아래 QR 코드를 스캔하면 해당 양식으로 이동합니다.</p>
+              
+              <div className="bg-slate-100 border-2 border-dashed border-slate-300 p-8 rounded-xl flex items-center justify-center mb-6">
+                {/* Mock QR Code visualization */}
+                <div className="grid grid-cols-6 grid-rows-6 gap-1">
+                  {Array.from({ length: 36 }).map((_, i) => (
+                    <div key={i} className={`w-4 h-4 ${Math.random() > 0.5 ? 'bg-slate-900' : 'bg-transparent'}`}></div>
+                  ))}
+                </div>
+              </div>
+              
+              <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 break-all">
+                <p className="text-xs font-mono text-indigo-600">{qrModalUrl}</p>
+              </div>
+              
+              <button 
+                onClick={() => handleCopy(qrModalUrl)}
+                className="mt-6 w-full py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition-colors"
+              >
+                URL 복사하기
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* API Generation Modal */}
+        {apiModalFormId && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-2xl w-full relative max-h-[90vh] overflow-y-auto">
+              <button onClick={() => { setApiModalFormId(null); setGeneratedApis([]); }} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600">✕</button>
+              
+              <div className="flex items-center mb-6">
+                <div className="p-3 bg-indigo-50 rounded-xl mr-4">
+                  <Database className="w-6 h-6 text-indigo-600" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900">외부 연계 API 발급</h2>
+                  <p className="text-sm text-slate-500">양식지({apiModalFormId})의 컴포넌트 규격에 맞춰 데이터를 삽입할 수 있는 POST 엔드포인트를 제공합니다.</p>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 mb-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-bold text-slate-800 flex items-center">
+                    <Key className="w-4 h-4 mr-2 text-slate-500" /> 생성된 API 엔드포인트
+                  </h3>
+                  {generatedApis.length === 1 && (
+                    <button 
+                      onClick={handleGenerateMultipleApis}
+                      className="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors"
+                    >
+                      대용량 분산처리 API 다중 생성
+                    </button>
+                  )}
+                </div>
+                
+                <div className="space-y-4">
+                  {generatedApis.map((api, idx) => (
+                    <div key={idx} className="bg-white border border-slate-200 p-4 rounded-lg relative group">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider bg-indigo-50 px-2 py-1 rounded">POST</span>
+                        <button onClick={() => handleCopy(api.url)} className="text-slate-400 hover:text-indigo-600"><Copy className="w-4 h-4" /></button>
+                      </div>
+                      <div className="text-sm font-mono text-slate-800 break-all mb-2">{api.url}</div>
+                      <div className="flex items-center text-xs text-slate-500 mt-2 border-t pt-2">
+                        <span className="mr-2 font-semibold">API Key:</span>
+                        <span className="font-mono bg-slate-100 px-2 py-0.5 rounded blur-sm hover:blur-none cursor-pointer transition-all">
+                          {api.key}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-slate-900 rounded-xl p-6 text-slate-300">
+                <h4 className="text-white font-bold mb-3 text-sm flex items-center">CURL 요청 예시 (JSON Payload)</h4>
+                <pre className="text-xs font-mono overflow-x-auto">
+                  {`curl -X POST ${generatedApis[0]?.url || 'https://api.company.com/v1/forms/.../submit'} \\
+  -H "Authorization: Bearer ${generatedApis[0]?.key || 'YOUR_API_KEY'}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "col1": "John Doe",
+    "col2": "010-1234-5678"
+  }'`}
+                </pre>
+              </div>
+
+            </div>
+          </div>
+        )}
 
       </div>
     </div>

@@ -1,36 +1,63 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 폼 제너레이터 (Web Report Editor)
 
-## Getting Started
+이 프로젝트는 기관/기업 내에서 복잡한 양식(설문, 동의서, 서명, 파일 업로드 등 23종의 컴포넌트)을 동적으로 생성하고, 외부 사용자에게 URL/QR/API 형태로 배포하여 데이터를 수집하는 **지능형 동적 폼 빌더 플랫폼**입니다.
 
-First, run the development server:
+## 🚀 주요 기능 (Key Features)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+### 1. 최고 관리자 (Super Admin) 워크스페이스
+- **기본 접속 계정**: `ralfkang@ktl.re.kr` / `test1234` / MFA: `111111`
+- **조직 및 하위 관리자 제어 (`/super-admin/users`)**
+  - 하위 관리자 초대 (이메일 발송)
+  - 등록된 하위 관리자 리스트 조회
+  - 단일 팝업 모달을 통한 사용자 권한 승급(SUPER_ADMIN 전환), 비밀번호 초기화, 계정 정지 및 영구 삭제 처리 기능
+- **시스템 환경 설정 (`/super-admin/settings`)**
+  - SMTP 메일 서버 연동 (초대 메일, 비밀번호 찾기 등 발송용)
+  - Claude API OAuth 2.0 연동 (AI 자동 양식 생성용 자격 증명)
+- **전체 행동 감사 (Audit Logs)**
+  - 플랫폼 내에서 이루어지는 모든 사용자의 행동 이력 조회
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. 일반 관리자 (Admin) 워크스페이스
+- **대시보드 메인 (`/admin/dashboard`)**
+  - 생성한 폼 개수, 누적 제출 수, 일일 방문자 트래픽 시각화 차트
+- **내 양식 관리 및 폼 빌더 (`/admin/templates`, `/admin/builder`)**
+  - 드래그 앤 드롭 기반의 동적 폼 생성 (단답형, 장문형, 서명, 지도 등 23개 컴포넌트 지원)
+  - 기존 양식을 템플릿화 하거나 부분 복사(Partial Clone) 가능
+  - 모바일/PC 반응형 실시간 프리뷰 기능 지원
+- **배포 URL 및 접속 관리 (`/admin/templates/urls`)**
+  - 양식별 배포 URL 생성 및 QR 코드 자동 발급
+  - **대용량 트래픽 대응용 다중 API 자동 발급 (Load Balanced Endpoints)** 기능 제공
+  - 클릭 한 번으로 양식 제출 마감(Closed) 제어
+- **제출 데이터 뷰어 (`/admin/data/[formId]`)**
+  - 수집된 데이터의 실시간 테이블 뷰
+  - 이상치 자동 감지 및 관리자 수동 재가공(수정) 에디터 내장
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 3. 사용자(User) 응답 화면
+- **외부 응답 페이지 (`/q/[formId]`)**
+  - 배포된 URL/QR을 통해 일반 사용자가 응답을 제출할 수 있는 반응형 렌더링 화면
+  - **f-999 테스트 폼**: 23종의 모든 컴포넌트가 렌더링되는 종합 테스트 화면 확인 가능
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## 🛠️ 기술 스택 (Tech Stack)
+- **프레임워크**: Next.js 14 (App Router)
+- **언어**: TypeScript, React
+- **스타일링**: Tailwind CSS
+- **아이콘**: Lucide React
+- **데이터 상태관리 (Mock)**: 페이지 내 Local/Static State 활용 (추후 Elasticsearch 기반 분산 DB로 마이그레이션 예정)
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 🧪 테스트 가이드 (How to Test)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 종합 컴포넌트 & 대용량 데이터 테스트 (f-999)
+본 프로젝트에는 23종의 모든 폼 컴포넌트가 하나씩 적용된 `f-999 (종합 컴포넌트 테스트 양식지)`가 내장되어 있습니다.
+- **빌더 렌더링 테스트**: `/admin/builder?id=f-999` 로 접속하여 각 컴포넌트의 설정 UI와 우측 프리뷰를 확인하세요.
+- **응답 화면 렌더링 테스트**: `/q/f-999` 로 접속하여 일반 사용자 관점에서 어떻게 보여지는지 테스트하세요.
+- **대용량 데이터 조회 테스트**: `/admin/data/f-999` 메뉴로 진입하면, 자동으로 생성된 **125개의 더미 제출 데이터(Row)**와 25개의 컬럼(Column)이 테이블 형태로 매핑되어 표시됩니다. 페이징 및 데이터 수정(재가공) UI를 체험해 볼 수 있습니다.
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 🚀 향후 고도화 목표 (Future Roadmap)
+- **Elasticsearch (ELK) 연동**: 현 Mock 데이터를 실제 Elasticsearch 인덱스로 마이그레이션하여 대규모 트래픽 및 전문 검색 기능 확보.
+- **AI 폼 자동 생성 고도화**: Claude API를 연동하여 HWPX, Word, Excel 파일을 업로드 시 즉각적으로 Web Form UI로 변환하는 AI Agent 도입.
+- **Export Engine**: 수집된 데이터를 원본 양식(HWPX, PDF 등)의 지정된 위치에 매핑하여 병합(Merge) 추출하는 엔진 적용.

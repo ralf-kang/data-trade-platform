@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Share2, Check, X, Clock, FileText, User } from 'lucide-react';
 import Link from 'next/link';
 
@@ -15,8 +15,15 @@ const MOCK_REQUESTS_SENT = [
 
 export default function ShareRequestsPage() {
   const [received, setReceived] = useState(MOCK_REQUESTS_RECEIVED);
-  const [sent] = useState(MOCK_REQUESTS_SENT);
+  const [sent, setSent] = useState(MOCK_REQUESTS_SENT);
   const [activeTab, setActiveTab] = useState<'RECEIVED' | 'SENT'>('RECEIVED');
+
+  useEffect(() => {
+    const localRequests = JSON.parse(localStorage.getItem('shareRequests') || '[]');
+    if (localRequests.length > 0) {
+      setSent(prev => [...prev, ...localRequests]);
+    }
+  }, []);
 
   const handleAction = (id: string, action: 'APPROVED' | 'REJECTED') => {
     if (confirm(`이 공유 요청을 ${action === 'APPROVED' ? '승인' : '거절'}하시겠습니까?\n승인 시 상대방은 이 양식의 사본을 가지게 됩니다.`)) {

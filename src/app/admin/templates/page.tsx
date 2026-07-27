@@ -8,21 +8,40 @@ export default function AdminTemplatesPage() {
   // Mock Templates
   const [templates, setTemplates] = useState<FormTemplate[]>([
     {
-      id: 'tpl-1',
-      title: '고객 만족도 조사',
+      id: 'f-101',
+      title: '2024 하반기 고객 만족도 조사',
       fields: [
-        { id: 'f1', type: 'text', label: '고객명', required: true },
-        { id: 'f2', type: 'regex-input', label: '연락처', required: true, regexPattern: '^01(?:0|1|[6-9])-(?:\\d{3}|\\d{4})-\\d{4}$' },
+        { id: 'f101-1', type: 'text', label: '고객명', required: true, width: '50%' },
+        { id: 'f101-2', type: 'regex-input', label: '연락처', required: true, regexPattern: '^01(?:0|1|[6-9])-(?:\\d{3}|\\d{4})-\\d{4}$', width: '50%' },
+        { id: 'f101-3', type: 'text', label: '이용 중인 서비스', required: true },
+        { id: 'f101-4', type: 'text', label: '개선 사항 (선택)', required: false },
       ],
       createdAt: new Date(),
     },
     {
-      id: 'tpl-2',
-      title: '영업점 주소지 취합',
+      id: 'f-102',
+      title: '신규 입사자 온보딩 피드백',
       fields: [
-        { id: 'f3', type: 'text', label: '지점명', required: true },
-        { id: 'f4', type: 'map-address', label: '지점 위치(지도)', required: true },
+        { id: 'f102-1', type: 'text', label: '부서명', required: true, width: '50%' },
+        { id: 'f102-2', type: 'text', label: '입사자 성함', required: true, width: '50%' },
+        { id: 'f102-3', type: 'text', label: '가장 유용했던 세션', required: true },
+        { id: 'f102-4', type: 'map-address', label: '근무 희망지 (옵션)', required: false },
       ],
+      createdAt: new Date(),
+    },
+    {
+      id: 'f-104',
+      title: 'IT 장비 지급 요청서 (보안동의서 포함)',
+      fields: [
+        { id: 'f104-1', type: 'text', label: '신청자 사번', required: true },
+        { id: 'f104-2', type: 'text', label: '요청 장비 (노트북/모니터 등)', required: true },
+      ],
+      createdAt: new Date(),
+    },
+    {
+      id: 'f-999',
+      title: '종합 컴포넌트 테스트 양식지 (f-999)',
+      fields: [],
       createdAt: new Date(),
     }
   ]);
