@@ -7,7 +7,8 @@ import {
   Type, AlignLeft, Hash, List, 
   CheckSquare, Calendar, Upload, PenTool,
   Image as ImageIcon, Images, Video, Table, FileBox, MessageSquare, Link as LinkIcon,
-  Layers, BellOff, ShieldAlert, Database, FileSpreadsheet, EyeOff, Save, ArrowUp, ArrowDown, Trash2, Plus
+  Layers, BellOff, ShieldAlert, Database, FileSpreadsheet, EyeOff, Save, ArrowUp, ArrowDown, Trash2, Plus,
+  Smartphone, Monitor, Globe
 } from 'lucide-react';
 import AiAutoGenerator from './AiAutoGenerator';
 
@@ -30,7 +31,7 @@ const FIELD_TYPES: { type: FieldType; label: string; icon: React.ReactNode }[] =
   { type: 'comment-thread', label: '댓글 코멘트', icon: <MessageSquare className="w-4 h-4 text-purple-600" /> },
   { type: 'slide-card', label: '슬라이드 카드', icon: <Layers className="w-4 h-4 text-amber-600" /> },
   { type: 'popup-toggle', label: '팝업(자동닫힘)', icon: <BellOff className="w-4 h-4 text-amber-600" /> },
-  { type: 'privacy-consent', label: '개인정보 동의서', icon: <ShieldAlert className="w-4 h-4 text-red-600" /> },
+  { type: 'privacy-consent', label: '개인정보 동의서', icon: <ShieldAlert className="w-4 h-6 text-red-600" /> },
   { type: 'api-select', label: 'API 연동 리스트', icon: <Database className="w-4 h-4 text-amber-600" /> },
   { type: 'csv-select', label: 'CSV 붙여넣기', icon: <FileSpreadsheet className="w-4 h-4 text-amber-600" /> },
 ];
@@ -41,6 +42,10 @@ export default function FormBuilder() {
     description: '',
     fields: []
   });
+
+  // Preview Modal State
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewMode, setPreviewMode] = useState<'mobile' | 'pc' | 'hybrid'>('hybrid');
 
   const addField = (type: FieldType) => {
     const newField: FormField = {
@@ -110,13 +115,22 @@ export default function FormBuilder() {
 
           <div className="flex justify-between items-center mb-6 border-b pb-4">
             <h1 className="text-2xl font-bold text-gray-900">보고서 양식 편집기</h1>
-            <button 
-              onClick={handleSave}
-              className="flex items-center px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
-            >
-              <Save className="w-4 h-4 mr-2" />
-              양식 저장
-            </button>
+            <div className="flex space-x-2">
+              <button 
+                onClick={() => setShowPreview(true)}
+                className="flex items-center space-x-2 px-4 py-2 bg-indigo-100 text-indigo-700 rounded hover:bg-indigo-200 transition-colors"
+              >
+                <Globe className="w-4 h-4" />
+                <span>배포 사전 확인 (Preview)</span>
+              </button>
+              <button 
+                onClick={handleSave}
+                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+              >
+                <Save className="w-4 h-4" />
+                <span>양식 저장하기</span>
+              </button>
+            </div>
           </div>
 
           <div className="space-y-4 mb-8">
@@ -254,6 +268,88 @@ export default function FormBuilder() {
           </div>
         </div>
       </div>
+
+      {/* Deployment Preview Modal */}
+      {showPreview && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl flex flex-col h-[90vh]">
+            <div className="flex justify-between items-center p-6 border-b border-gray-200">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">배포 전 사전 확인 (디바이스 프리뷰)</h2>
+                <p className="text-sm text-gray-500 mt-1">사용자들이 이 폼을 주로 어떤 기기에서 입력하나요?</p>
+              </div>
+              <button onClick={() => setShowPreview(false)} className="text-gray-400 hover:text-gray-600">
+                ✕
+              </button>
+            </div>
+            
+            <div className="flex flex-1 overflow-hidden">
+              <div className="w-64 border-r border-gray-200 p-6 flex flex-col space-y-4 bg-gray-50">
+                <h3 className="font-semibold text-gray-700">타겟 디바이스 선택</h3>
+                <button 
+                  onClick={() => setPreviewMode('mobile')}
+                  className={`flex items-center space-x-3 p-3 rounded-lg border ${previewMode === 'mobile' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-gray-200 bg-white hover:bg-gray-100'}`}
+                >
+                  <Smartphone className="w-5 h-5" />
+                  <span className="font-medium">모바일 폰 주력</span>
+                </button>
+                <button 
+                  onClick={() => setPreviewMode('pc')}
+                  className={`flex items-center space-x-3 p-3 rounded-lg border ${previewMode === 'pc' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-gray-200 bg-white hover:bg-gray-100'}`}
+                >
+                  <Monitor className="w-5 h-5" />
+                  <span className="font-medium">PC 화면 주력</span>
+                </button>
+                <button 
+                  onClick={() => setPreviewMode('hybrid')}
+                  className={`flex items-center space-x-3 p-3 rounded-lg border ${previewMode === 'hybrid' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-gray-200 bg-white hover:bg-gray-100'}`}
+                >
+                  <Globe className="w-5 h-5" />
+                  <span className="font-medium">둘 다 대응 (반응형)</span>
+                </button>
+                
+                <div className="mt-auto pt-6">
+                  <button 
+                    onClick={() => { setShowPreview(false); handleSave(); }}
+                    className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold shadow-sm"
+                  >
+                    이 설정으로 최종 배포
+                  </button>
+                </div>
+              </div>
+              
+              <div className="flex-1 bg-gray-200 flex items-center justify-center p-8 overflow-y-auto">
+                {/* Simulated Device Frame */}
+                <div 
+                  className={`bg-white shadow-2xl overflow-y-auto transition-all duration-300 ${
+                    previewMode === 'mobile' ? 'w-[375px] h-[812px] rounded-[2.5rem] border-[8px] border-gray-900 p-6' : 
+                    previewMode === 'pc' ? 'w-full max-w-4xl h-full rounded-lg border border-gray-300 p-10' :
+                    'w-full max-w-2xl h-[90%] rounded-xl border border-gray-300 p-8'
+                  }`}
+                >
+                  <h1 className="text-2xl font-bold text-gray-900 mb-6 pb-4 border-b">{template.title}</h1>
+                  {fields.length === 0 ? (
+                    <div className="text-center text-gray-400 py-20">양식 내용이 없습니다.</div>
+                  ) : (
+                    <div className="space-y-6">
+                      {fields.map(field => (
+                        <div key={field.id} className="flex flex-col space-y-2">
+                          <label className="font-medium text-gray-700">
+                            {field.label} {field.required && <span className="text-red-500">*</span>}
+                          </label>
+                          <div className="p-3 border border-gray-200 rounded-md bg-gray-50 text-gray-400 text-sm">
+                            {FIELD_TYPES.find(t => t.type === field.type)?.label} 입력란 (미리보기)
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -32,6 +32,7 @@ export interface FormField {
   autoDismissSeconds?: number; // 팝업 토글 전용
   apiEndpoint?: string; // 외부 연동용
   description?: string;
+  i18n?: Record<string, { label?: string; placeholder?: string; options?: string[] }>; // 다국어 지원 (ex: { en: { label: 'Name' } })
 }
 
 export interface FormTemplate {

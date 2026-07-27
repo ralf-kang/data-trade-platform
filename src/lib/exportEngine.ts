@@ -1,17 +1,23 @@
 import ExcelJS from 'exceljs';
 import { Document, Packer, Paragraph, TextRun } from 'docx';
 
-export async function exportToExcel(data: any[], filename: string) {
+export async function exportToExcel(data: any[], filename: string, role: 'SUPER_ADMIN' | 'ADMIN' = 'ADMIN') {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Report');
 
   // Basic headers based on keys of the first object
   if (data.length > 0) {
     const headers = Object.keys(data[0]);
+    
+    // Role-based metadata appending
+    if (role === 'SUPER_ADMIN') {
+      headers.push('_tenant_id', '_client_ip', '_device_info');
+    }
+    
     worksheet.addRow(headers);
     
     data.forEach(item => {
-      const row = headers.map(header => item[header]);
+      const row = headers.map(header => item[header] || 'N/A');
       worksheet.addRow(row);
     });
   }
