@@ -4,12 +4,21 @@ import { useState, useEffect } from 'react';
 import { Share2, Check, X, Clock, FileText, User } from 'lucide-react';
 import Link from 'next/link';
 
-const MOCK_REQUESTS_RECEIVED = [
+interface ShareRequest {
+  id: string;
+  from?: string;
+  to?: string;
+  targetForm: string;
+  date: string;
+  status: string;
+}
+
+const MOCK_REQUESTS_RECEIVED: ShareRequest[] = [
   { id: 'req-1', from: '마케팅팀 이영희', targetForm: '2024 하반기 고객 만족도 조사 (f-101)', date: '2026-07-27 14:20', status: 'PENDING' },
   { id: 'req-2', from: '디자인팀 박철수', targetForm: '2024 하반기 고객 만족도 조사 (f-101)', date: '2026-07-26 09:15', status: 'APPROVED' },
 ];
 
-const MOCK_REQUESTS_SENT = [
+const MOCK_REQUESTS_SENT: ShareRequest[] = [
   { id: 'req-3', to: '인사팀 김민수', targetForm: '신규 입사자 온보딩 피드백 (f-102)', date: '2026-07-27 16:05', status: 'PENDING' },
 ];
 

@@ -8,6 +8,7 @@ export default function AdminDashboardPage() {
   const [popularForms] = useState([
     { id: 'f-101', title: '2024 하반기 고객 만족도 조사', owner: '마케팅팀 김민수', submissions: 4, growth: '+12%' },
     { id: 'f-102', title: '신규 입사자 온보딩 피드백', owner: '인사팀 이영희', submissions: 2, growth: '+5%' },
+    { id: 'f-103', title: '2026년 하반기 워크샵 참가 신청서', owner: '총무팀 박지영', submissions: 2, growth: '+8%' },
     { id: 'f-104', title: 'IT 장비 지급 요청서 (보안동의서 포함)', owner: 'IT지원팀 정대만', submissions: 2, growth: '-1%' },
   ]);
 

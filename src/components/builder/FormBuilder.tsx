@@ -70,6 +70,19 @@ export default function FormBuilder() {
         ]
       };
     }
+    if (id === 'f-103') {
+      return {
+        id: 'f-103',
+        title: '2026년 하반기 워크샵 참가 신청서',
+        description: '전사 워크샵 참석 여부 및 희망 활동 조사',
+        fields: [
+          { id: 'f103-1', type: 'text', label: '부서명', required: true, nullable: false, width: '50%' },
+          { id: 'f103-2', type: 'text', label: '성명', required: true, nullable: false, width: '50%' },
+          { id: 'f103-3', type: 'radio', label: '참석 여부', required: true, nullable: false, width: '100%', options: ['참석', '불참'] },
+          { id: 'f103-4', type: 'checkbox', label: '희망 액티비티 (선택)', required: false, nullable: true, width: '100%', options: ['등산', '볼링', '방탈출', '보드게임'] },
+        ]
+      };
+    }
     if (id === 'f-104') {
       return {
         id: 'f-104',

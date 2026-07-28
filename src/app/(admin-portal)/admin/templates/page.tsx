@@ -10,39 +10,60 @@ export default function AdminTemplatesPage() {
     {
       id: 'f-101',
       title: '2024 하반기 고객 만족도 조사',
+      description: '고객 피드백 수집용 양식',
       fields: [
         { id: 'f101-1', type: 'text', label: '고객명', required: true, width: '50%' },
         { id: 'f101-2', type: 'regex-input', label: '연락처', required: true, regexPattern: '^01(?:0|1|[6-9])-(?:\\d{3}|\\d{4})-\\d{4}$', width: '50%' },
         { id: 'f101-3', type: 'text', label: '이용 중인 서비스', required: true },
         { id: 'f101-4', type: 'text', label: '개선 사항 (선택)', required: false },
       ],
-      createdAt: new Date(),
+      createdAt: '2026-07-27 10:30',
+      updatedAt: '2026-07-27 15:20',
     },
     {
       id: 'f-102',
       title: '신규 입사자 온보딩 피드백',
+      description: '사내 온보딩 세션 피드백',
       fields: [
         { id: 'f102-1', type: 'text', label: '부서명', required: true, width: '50%' },
         { id: 'f102-2', type: 'text', label: '입사자 성함', required: true, width: '50%' },
         { id: 'f102-3', type: 'text', label: '가장 유용했던 세션', required: true },
         { id: 'f102-4', type: 'map-address', label: '근무 희망지 (옵션)', required: false },
       ],
-      createdAt: new Date(),
+      createdAt: '2026-07-19 09:00',
+      updatedAt: '2026-07-20 09:30',
+    },
+    {
+      id: 'f-103',
+      title: '2026년 하반기 워크샵 참가 신청서',
+      description: '전사 워크샵 참석 여부 및 희망 활동 조사',
+      fields: [
+        { id: 'f103-1', type: 'text', label: '부서명', required: true, width: '50%' },
+        { id: 'f103-2', type: 'text', label: '성명', required: true, width: '50%' },
+        { id: 'f103-3', type: 'radio', label: '참석 여부', required: true, options: ['참석', '불참'] },
+        { id: 'f103-4', type: 'checkbox', label: '희망 액티비티 (선택)', required: false, options: ['등산', '볼링', '방탈출', '보드게임'] },
+      ],
+      createdAt: '2026-07-21 10:00',
+      updatedAt: '2026-07-23 09:45',
     },
     {
       id: 'f-104',
       title: 'IT 장비 지급 요청서 (보안동의서 포함)',
+      description: '노트북 및 모니터 신청',
       fields: [
         { id: 'f104-1', type: 'text', label: '신청자 사번', required: true },
         { id: 'f104-2', type: 'text', label: '요청 장비 (노트북/모니터 등)', required: true },
       ],
-      createdAt: new Date(),
+      createdAt: '2026-07-09 11:00',
+      updatedAt: '2026-07-11 10:15',
     },
     {
       id: 'f-999',
       title: '종합 컴포넌트 테스트 양식지 (f-999)',
+      description: '모든 23종 컴포넌트가 포함된 대규모 테스트 폼입니다.',
       fields: [],
-      createdAt: new Date(),
+      createdAt: '2026-07-27 17:30',
+      updatedAt: '2026-07-27 17:30',
     }
   ]);
 
@@ -75,11 +96,14 @@ export default function AdminTemplatesPage() {
       id: crypto.randomUUID() // new IDs for cloned fields
     })) || [];
 
+    const now = new Date().toLocaleString('ko-KR', { hour12: false }).slice(0, 16).replace('.', '-');
     const newTemplate: FormTemplate = {
       id: `tpl-${Date.now()}`,
       title: `${selectedTemplateForClone.title} (복사본)`,
+      description: selectedTemplateForClone.description,
       fields: fieldsToCopy,
-      createdAt: new Date(),
+      createdAt: now,
+      updatedAt: now,
     };
 
     setTemplates([newTemplate, ...templates]);
@@ -125,7 +149,7 @@ export default function AdminTemplatesPage() {
                     {template.fields?.length || 0}개
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-gray-500">
-                    {template.createdAt.toLocaleDateString()}
+                    {template.createdAt}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right font-medium">
                     <div className="flex justify-end space-x-3">

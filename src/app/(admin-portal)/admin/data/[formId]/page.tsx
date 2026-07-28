@@ -25,6 +25,14 @@ const MOCK_STORE: Record<string, { title: string, headers: string[], data: any[]
       { id: 'SUB-102', date: '2026-07-20 09:30', col1: '디자인팀', col2: '박디자인', col3: '사내 문화 워크샵', col4: '강남 오피스' },
     ]
   },
+  'f-103': {
+    title: '2026년 하반기 워크샵 참가 신청서',
+    headers: ['ID', '제출 일시', '부서명', '성명', '참석 여부', '희망 액티비티 (선택)'],
+    data: [
+      { id: 'SUB-301', date: '2026-07-22 13:00', col1: '총무팀', col2: '박지영', col3: '참석', col4: '등산, 보드게임' },
+      { id: 'SUB-302', date: '2026-07-23 09:45', col1: '개발2팀', col2: '최준호', col3: '참석', col4: '볼링' },
+    ]
+  },
   'f-104': {
     title: 'IT 장비 지급 요청서 (보안동의서 포함)',
     headers: ['ID', '제출 일시', '신청자 사번', '요청 장비'],
@@ -78,7 +86,43 @@ export default function DataViewerPage() {
   const [data, setData] = useState(currentMock.data);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<any>({});
-  
+  const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 20;
+
+  const filteredData = data.filter(row => {
+    if (!searchTerm) return true;
+    const haystack = Object.values(row).join(' ').toLowerCase();
+    return haystack.includes(searchTerm.toLowerCase());
+  });
+  const totalPages = Math.max(1, Math.ceil(filteredData.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pagedData = filteredData.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    setPage(1);
+  };
+
+  const handleExportCsv = () => {
+    const rows = [
+      currentMock.headers,
+      ...filteredData.map(row => [
+        row.id,
+        row.date,
+        ...currentMock.headers.slice(2).map((_, idx) => String(row[`col${idx + 1}`] ?? '')),
+      ]),
+    ];
+    const csv = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${formId}_data.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleEditClick = (row: any) => {
     setEditingId(row.id);
     setEditForm({ ...row });
@@ -116,12 +160,18 @@ export default function DataViewerPage() {
         <div className="flex space-x-3">
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-2.5 text-gray-400" />
-            <input type="text" placeholder="데이터 검색..." className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-600 outline-none" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              placeholder="데이터 검색..."
+              className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-600 outline-none"
+            />
           </div>
           <button className="flex items-center px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium transition-colors">
             <Filter className="w-4 h-4 mr-2" /> 필터
           </button>
-          <button className="flex items-center px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-bold shadow-sm transition-colors">
+          <button onClick={handleExportCsv} className="flex items-center px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-bold shadow-sm transition-colors">
             <Download className="w-4 h-4 mr-2" /> 엑셀/CSV 추출
           </button>
         </div>
@@ -145,7 +195,7 @@ export default function DataViewerPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-100">
-                {data.map((row) => (
+                {pagedData.map((row) => (
                   <tr key={row.id} className={`hover:bg-indigo-50/30 transition-colors ${editingId === row.id ? 'bg-indigo-50/50' : ''}`}>
                     
                     {/* Action Column */}
@@ -189,7 +239,9 @@ export default function DataViewerPage() {
                             <div className="flex items-center">
                               {/* 이상치 감지 예시 (101 양식의 연락처 컬럼) */}
                               {formId === 'f-101' && key === 'col2' && value.length < 13 && value.length > 0 && (
-                                <AlertTriangle className="w-4 h-4 text-amber-500 mr-2 shrink-0" title="의심되는 이상치(포맷 불일치)" />
+                                <span title="의심되는 이상치(포맷 불일치)" className="mr-2 shrink-0">
+                                  <AlertTriangle className="w-4 h-4 text-amber-500" />
+                                </span>
                               )}
                               {value}
                             </div>
@@ -205,10 +257,26 @@ export default function DataViewerPage() {
           </div>
           
           <div className="bg-slate-50 px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-            <p className="text-sm text-gray-500">총 <span className="font-bold text-gray-900">{data.length}</span>건의 데이터가 있습니다.</p>
+            <p className="text-sm text-gray-500">
+              총 <span className="font-bold text-gray-900">{filteredData.length}</span>건 중{' '}
+              {filteredData.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1}-{Math.min(currentPage * PAGE_SIZE, filteredData.length)}건 표시
+              (페이지 {currentPage} / {totalPages})
+            </p>
             <div className="flex space-x-2">
-              <button className="px-3 py-1 border border-gray-300 bg-white rounded text-sm text-gray-600 disabled:opacity-50" disabled>이전</button>
-              <button className="px-3 py-1 border border-gray-300 bg-white rounded text-sm text-gray-600 disabled:opacity-50" disabled>다음</button>
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                className="px-3 py-1 border border-gray-300 bg-white rounded text-sm text-gray-600 disabled:opacity-50 hover:bg-gray-50"
+                disabled={currentPage <= 1}
+              >
+                이전
+              </button>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                className="px-3 py-1 border border-gray-300 bg-white rounded text-sm text-gray-600 disabled:opacity-50 hover:bg-gray-50"
+                disabled={currentPage >= totalPages}
+              >
+                다음
+              </button>
             </div>
           </div>
         </div>

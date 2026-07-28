@@ -8,12 +8,14 @@ import Link from 'next/link';
 const MOCK_FORMS = [
   { id: 'f-101', title: '2024 하반기 고객 만족도 조사', responses: 4, lastSubmit: '2026-07-27 15:20', status: 'OPEN' },
   { id: 'f-102', title: '신규 입사자 온보딩 피드백', responses: 2, lastSubmit: '2026-07-20 09:30', status: 'OPEN' },
+  { id: 'f-103', title: '2026년 하반기 워크샵 참가 신청서', responses: 2, lastSubmit: '2026-07-23 09:45', status: 'OPEN' },
   { id: 'f-104', title: 'IT 장비 지급 요청서 (보안동의서 포함)', responses: 2, lastSubmit: '2026-07-11 10:15', status: 'CLOSED' },
   { id: 'f-999', title: '종합 컴포넌트 테스트 양식지 (f-999)', responses: 125, lastSubmit: '2026-07-27 17:30', status: 'OPEN' },
 ];
 
 const RECENT_SUBMISSIONS = [
   { formId: 'f-999', formTitle: '종합 컴포넌트 테스트...', date: '2026-07-27 17:30', dataId: 'SUB-999-0125', extract: '테스터125 / 010-1234-5678' },
+  { formId: 'f-103', formTitle: '2026년 하반기 워크샵...', date: '2026-07-23 09:45', dataId: 'SUB-302', extract: '최준호 / 볼링' },
   { formId: 'f-101', formTitle: '2024 하반기 고객 만...', date: '2026-07-27 15:20', dataId: 'SUB-004', extract: '이상치 / 010-111-222' },
   { formId: 'f-101', formTitle: '2024 하반기 고객 만...', date: '2026-07-27 14:05', dataId: 'SUB-003', extract: '이영희 / 010-5555-5555' },
   { formId: 'f-101', formTitle: '2024 하반기 고객 만...', date: '2026-07-27 11:15', dataId: 'SUB-002', extract: '김철수 / 010-9999-8888' },

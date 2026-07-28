@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link as LinkIcon, QrCode, Power, Eye, Copy, ExternalLink, Settings2, BarChart2, Database, Key } from 'lucide-react';
 import Link from 'next/link';
 
 const MOCK_URLS = [
   { id: 'f-101', title: '2024 하반기 고객 만족도 조사', url: 'http://localhost:3000/q/f-101', status: 'OPEN', views: 342, submissions: 4, lastUpdate: '2026-07-27 10:30' },
   { id: 'f-102', title: '신규 입사자 온보딩 피드백', url: 'http://localhost:3000/q/f-102', status: 'OPEN', views: 125, submissions: 2, lastUpdate: '2026-07-20 15:45' },
+  { id: 'f-103', title: '2026년 하반기 워크샵 참가 신청서', url: 'http://localhost:3000/q/f-103', status: 'OPEN', views: 88, submissions: 2, lastUpdate: '2026-07-23 09:45' },
   { id: 'f-104', title: 'IT 장비 지급 요청서 (보안동의서 포함)', url: 'http://localhost:3000/q/f-104', status: 'CLOSED', views: 50, submissions: 2, lastUpdate: '2026-07-10 18:00' },
   { id: 'f-999', title: '종합 컴포넌트 테스트 양식지 (f-999)', url: 'http://localhost:3000/q/f-999', status: 'OPEN', views: 9210, submissions: 125, lastUpdate: '2026-07-27 17:30' },
 ];
@@ -16,6 +17,19 @@ export default function UrlManagerPage() {
   const [qrModalUrl, setQrModalUrl] = useState<string | null>(null);
   const [apiModalFormId, setApiModalFormId] = useState<string | null>(null);
   const [generatedApis, setGeneratedApis] = useState<{ url: string, key: string }[]>([]);
+
+  // 렌더링 중 Math.random()을 직접 호출하지 않도록, 선택된 URL 기반의 결정적 패턴을 미리 계산
+  const qrPattern = useMemo(() => {
+    const seed = qrModalUrl || '';
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+    }
+    return Array.from({ length: 36 }).map((_, i) => {
+      hash = (hash * 1103515245 + 12345 + i) >>> 0;
+      return hash % 2 === 0;
+    });
+  }, [qrModalUrl]);
 
   const toggleStatus = (id: string, currentStatus: string) => {
     const newStatus = currentStatus === 'OPEN' ? 'CLOSED' : 'OPEN';
@@ -165,8 +179,8 @@ export default function UrlManagerPage() {
               <div className="bg-slate-100 border-2 border-dashed border-slate-300 p-8 rounded-xl flex items-center justify-center mb-6">
                 {/* Mock QR Code visualization */}
                 <div className="grid grid-cols-6 grid-rows-6 gap-1">
-                  {Array.from({ length: 36 }).map((_, i) => (
-                    <div key={i} className={`w-4 h-4 ${Math.random() > 0.5 ? 'bg-slate-900' : 'bg-transparent'}`}></div>
+                  {qrPattern.map((filled, i) => (
+                    <div key={i} className={`w-4 h-4 ${filled ? 'bg-slate-900' : 'bg-transparent'}`}></div>
                   ))}
                 </div>
               </div>

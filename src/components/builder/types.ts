@@ -8,7 +8,8 @@ export type FieldType =
   | 'date' 
   | 'file' 
   | 'signature'
-  | 'image' | 'image-viewer' | 'table' | 'file-upload' | 'comment-thread'
+  | 'image' | 'image-gallery' | 'video-link' | 'image-viewer' | 'table' | 'file-upload'
+  | 'nested-report' | 'report-link' | 'comment-thread'
   | 'slide-card' | 'popup-toggle' | 'privacy-consent' | 'api-select' | 'csv-select'
   | 'regex-input' | 'map-address';
 
