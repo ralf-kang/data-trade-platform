@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentAdmin } from '@/lib/auth';
+import { getCurrentAdmin, requireAdmin } from '@/lib/auth';
 import { editSubmission } from '@/lib/services/submissionService';
 
 type Params = { params: Promise<{ formId: string; submissionId: string }> };
 
 export async function PUT(request: NextRequest, { params }: Params) {
+  const unauthorized = await requireAdmin();
+  if (unauthorized) return unauthorized;
+
   const { formId, submissionId } = await params;
   const body = await request.json();
   if (!body?.data || typeof body.data !== 'object') {

@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import type { AdminUser } from '@/generated/prisma/client';
 
@@ -33,4 +34,33 @@ export async function getCurrentAdmin(): Promise<AdminUser> {
       role: role === 'super-admin' ? 'SUPER_ADMIN' : 'ADMIN',
     },
   });
+}
+
+/**
+ * 로그인 여부만 확인한다 (getCurrentAdmin과 달리, 쿠키가 없을 때 임의로 admin 계정을
+ * 만들어주지 않는다).
+ *
+ * 기술적 보호조치(저작권법 제93조·제104조의2 준용) 목적: 수집된 제출 데이터(비정형,
+ * Elasticsearch)는 데이터베이스제작자의 상당한 투자가 들어간 데이터베이스이므로, 비로그인
+ * 상태의 무단 접근·반복적/체계적 추출을 막기 위해 관리자 API는 반드시 이 검사를 거쳐야 한다.
+ */
+export async function isAuthenticated(): Promise<boolean> {
+  const store = await cookies();
+  return !!store.get('adminRole')?.value;
+}
+
+/**
+ * 관리자 전용 API Route Handler 맨 앞에서 호출한다.
+ * 인증되지 않았으면 401 응답을, 인증되었으면 null을 반환한다.
+ *
+ * 사용 예:
+ *   const unauthorized = await requireAdmin();
+ *   if (unauthorized) return unauthorized;
+ */
+export async function requireAdmin(): Promise<NextResponse | null> {
+  if (await isAuthenticated()) return null;
+  return NextResponse.json(
+    { error: 'UNAUTHORIZED', message: '로그인이 필요합니다.' },
+    { status: 401 }
+  );
 }

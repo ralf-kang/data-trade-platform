@@ -63,22 +63,21 @@ export default function DataViewerPage() {
   };
 
   const handleExportCsv = async () => {
-    const qs = new URLSearchParams({ page: '1', pageSize: '10000' });
+    // 클라이언트가 pageSize를 크게 요청해 한 번에 전체를 긁어가는 대신, 서버가 내부적으로
+    // 페이지를 순회하고 감사 로그(DATA_EXPORT)를 남기는 전용 추출 엔드포인트를 사용한다
+    // (저작권법 제93조 대응 — src/app/api/forms/[formId]/submissions/export/route.ts).
+    const qs = new URLSearchParams();
     if (searchTerm) qs.set('search', searchTerm);
-    const res = await fetch(`/api/forms/${formId}/submissions?${qs.toString()}`);
-    const json = await res.json();
-    const rows: SubmissionItem[] = json.items ?? [];
-
-    const csvRows = [
-      ['ID', '제출 일시', ...columns.map((c) => c.label)],
-      ...rows.map((row) => [
-        row.submissionId,
-        row.submittedAt,
-        ...columns.map((c) => String(row.data[c.key] ?? '')),
-      ]),
-    ];
-    const csv = csvRows.map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const res = await fetch(`/api/forms/${formId}/submissions/export?${qs.toString()}`);
+    if (!res.ok) {
+      if (res.status === 429) {
+        alert('대량 추출 요청이 너무 잦습니다. 잠시 후 다시 시도해주세요.');
+      } else {
+        alert('추출에 실패했습니다.');
+      }
+      return;
+    }
+    const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;

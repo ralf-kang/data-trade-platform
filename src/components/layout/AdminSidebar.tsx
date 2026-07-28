@@ -82,8 +82,13 @@ export function AdminSidebar({ role = 'admin' }: AdminSidebarProps) {
           <div className="px-6 mb-2 text-xs font-bold text-slate-500 uppercase tracking-wider">General Admin</div>
           {renderLinks(commonMenus)}
         </div>
-        
+
       </nav>
+      <div className="p-4 border-t border-slate-800">
+        <Link href="/legal/database-rights" className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
+          데이터베이스제작자 권리 고지
+        </Link>
+      </div>
     </div>
   );
 }

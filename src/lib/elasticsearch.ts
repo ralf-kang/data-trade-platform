@@ -184,6 +184,11 @@ export interface ListSubmissionsResult {
   items: SubmissionDocument[];
 }
 
+// 단일 요청으로 데이터베이스 전체(또는 상당한 부분)를 한 번에 긁어가지 못하도록
+// 서버 계층에서 강제하는 상한선 (저작권법 제93조 대응 기술적 조치). 클라이언트가
+// 쿼리 파라미터로 더 큰 값을 요청해도 이 값을 넘지 못한다.
+const MAX_PAGE_SIZE = 200;
+
 export async function listSubmissions({
   formId,
   page = 1,
@@ -191,10 +196,11 @@ export async function listSubmissions({
   search,
 }: ListSubmissionsParams): Promise<ListSubmissionsResult> {
   await ensureIndices();
+  const cappedPageSize = Math.min(pageSize, MAX_PAGE_SIZE);
   const res = await elasticClient.search<SubmissionDocument>({
     index: INDEX_NAMES.SUBMISSIONS,
-    from: (page - 1) * pageSize,
-    size: pageSize,
+    from: (page - 1) * cappedPageSize,
+    size: cappedPageSize,
     sort: [{ submittedAt: 'desc' }],
     query: {
       bool: {

@@ -269,6 +269,27 @@ async function main() {
     await prisma.auditLog.create({ data: log });
   }
 
+  console.log('[seed] 데이터베이스제작자 등록(저작권법 제91조~제95조) 생성...');
+  const existingRegistration = await prisma.databaseRegistration.findFirst();
+  if (!existingRegistration) {
+    await prisma.databaseRegistration.create({
+      data: {
+        producerName: '웹 리포트 에디터 운영사',
+        completedAt: new Date(),
+        lastSubstantialUpdate: new Date(),
+        investmentDescription:
+          '양식 빌더 플랫폼 구축 및 초기 데모 데이터(관리자 계정, 폼 5종, 제출 데이터) 이관에 인적·물적 투자.',
+        updateLogs: {
+          create: {
+            scope: '초기 데이터 이관',
+            description: 'Mock 데이터를 PostgreSQL(정형) + Elasticsearch(비정형)로 이관',
+            performedBy: 'db-seed-script',
+          },
+        },
+      },
+    });
+  }
+
   console.log('[seed] 완료.');
 }
 

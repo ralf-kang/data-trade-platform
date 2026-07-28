@@ -1,0 +1,9 @@
+# 데이터베이스제작자 보호 조치 (저작권법 제93조): 관리자 콘솔/서버 API 경로에 대한
+# 크롤러의 체계적/반복적 수집을 명시적으로 금지한다. 이 파일은 준수하는 크롤러에게만
+# 유효한 신사협정이며, 실제 접근 통제는 서버 측 인증(requireAdmin)과 레이트 리미팅으로
+# 강제된다 (src/lib/auth.ts, src/lib/rateLimit.ts 참고).
+
+User-agent: *
+Disallow: /admin
+Disallow: /super-admin
+Disallow: /api

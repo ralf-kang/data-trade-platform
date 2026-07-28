@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Shield, Key, Mail, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -45,7 +46,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
       <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden">
         <div className={`p-8 ${isSuperAdmin ? 'bg-slate-900 text-white' : 'bg-indigo-600 text-white'}`}>
           <div className="flex justify-center mb-6">
@@ -180,6 +181,9 @@ export default function LoginPage() {
           </form>
         )}
       </div>
+      <Link href="/legal/database-rights" className="mt-4 text-xs text-gray-400 hover:text-gray-600">
+        데이터베이스제작자 권리 고지
+      </Link>
     </div>
   );
 }

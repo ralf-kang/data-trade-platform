@@ -6,14 +6,17 @@
 # 멀티스테이지 빌드로 최종 런타임 이미지에는 devDependencies와 소스가 포함되지 않는다.
 # next.config.ts 의 `output: "standalone"` 옵션과 짝을 이룬다.
 
-ARG NODE_VERSION=20-alpine
+# Prisma 7 계열 부속 패키지(@prisma/streams-local 등)가 Node >=22를 요구하므로 20 대신 22 사용.
+ARG NODE_VERSION=22-alpine
 
 # ---------------------------------------------------------------------------
 # 1) deps: 의존성 설치 (devDependencies 포함 — build 단계에서 prisma/typescript 필요)
 # ---------------------------------------------------------------------------
 FROM node:${NODE_VERSION} AS deps
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json prisma.config.ts ./
+# postinstall(`prisma generate`)이 스키마 파일을 필요로 하므로 npm ci 전에 미리 복사한다.
+COPY prisma ./prisma
 RUN npm ci
 
 # ---------------------------------------------------------------------------
@@ -44,6 +47,14 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json package-lock.json prisma.config.ts ./
 COPY prisma ./prisma
 CMD ["npx", "prisma", "migrate", "deploy"]
+
+# ---------------------------------------------------------------------------
+# 2-c) seeder: 데모 데이터 적재(prisma/seed.ts) 전용. builder 스테이지가 이미
+#      전체 소스 + 생성된 Prisma Client + devDependencies를 갖고 있으므로 그대로
+#      재사용한다 (runner에는 seed 스크립트/CLI가 없어 별도 스테이지가 필요).
+# ---------------------------------------------------------------------------
+FROM builder AS seeder
+CMD ["npm", "run", "db:seed"]
 
 # ---------------------------------------------------------------------------
 # 3) runner: standalone 산출물만 담은 경량 런타임 이미지

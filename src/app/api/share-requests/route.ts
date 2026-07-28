@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentAdmin } from '@/lib/auth';
+import { getCurrentAdmin, requireAdmin } from '@/lib/auth';
 import { createShareRequest, listShareRequests } from '@/lib/services/shareRequestService';
 
 export async function GET() {
+  const unauthorized = await requireAdmin();
+  if (unauthorized) return unauthorized;
+
   const actor = await getCurrentAdmin();
   const { received, sent } = await listShareRequests(actor.id);
   return NextResponse.json({ received, sent });
 }
 
 export async function POST(request: NextRequest) {
+  const unauthorized = await requireAdmin();
+  if (unauthorized) return unauthorized;
+
   const body = await request.json();
   if (!body?.formId) {
     return NextResponse.json({ error: 'formId is required' }, { status: 400 });

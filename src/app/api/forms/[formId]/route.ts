@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentAdmin } from '@/lib/auth';
+import { getCurrentAdmin, requireAdmin } from '@/lib/auth';
 import { deleteForm, getForm, incrementFormView, setFormStatus, updateForm } from '@/lib/services/formService';
 
 type Params = { params: Promise<{ formId: string }> };
 
+// GET은 의도적으로 인증을 요구하지 않는다 — 공개 응답 페이지(/q/[formId])가 폼 필드
+// 구성을 렌더링하기 위해 비로그인 상태에서도 호출해야 하기 때문이다. 실제 보호 대상인
+// "제출 데이터"는 이 엔드포인트가 아니라 아래 submissions 라우트에서 노출되며, 그쪽은
+// requireAdmin()으로 보호된다.
 export async function GET(request: NextRequest, { params }: Params) {
   const { formId } = await params;
   const form = await getForm(formId);
@@ -17,6 +21,9 @@ export async function GET(request: NextRequest, { params }: Params) {
 }
 
 export async function PUT(request: NextRequest, { params }: Params) {
+  const unauthorized = await requireAdmin();
+  if (unauthorized) return unauthorized;
+
   const { formId } = await params;
   const body = await request.json();
   const actor = await getCurrentAdmin();
@@ -30,6 +37,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
 }
 
 export async function PATCH(request: NextRequest, { params }: Params) {
+  const unauthorized = await requireAdmin();
+  if (unauthorized) return unauthorized;
+
   const { formId } = await params;
   const body = await request.json();
   if (body.status !== 'OPEN' && body.status !== 'CLOSED') {
@@ -42,6 +52,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(_request: NextRequest, { params }: Params) {
+  const unauthorized = await requireAdmin();
+  if (unauthorized) return unauthorized;
+
   const { formId } = await params;
   const actor = await getCurrentAdmin();
   await deleteForm(formId, actor);

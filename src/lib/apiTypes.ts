@@ -47,3 +47,12 @@ export interface ShareRequestItem {
   toUser: { id: string; name: string; email: string };
   form: { id: string };
 }
+
+export interface DatabaseRightsInfo {
+  producerName: string;
+  completedAt: string;
+  lastSubstantialUpdate: string;
+  investmentDescription: string;
+  protectionExpiresAt: string;
+  recentUpdates: Array<{ occurredAt: string; scope: string; description: string; performedBy: string }>;
+}
