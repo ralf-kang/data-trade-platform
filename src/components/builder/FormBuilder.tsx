@@ -52,6 +52,10 @@ export default function FormBuilder() {
   });
   const [loading, setLoading] = useState(!!id);
   const [saving, setSaving] = useState(false);
+  // 확정(PUBLISHED) 상태 정보 — 확정된 양식지의 필드를 수정·저장하면 외부 연동 계약
+  // (스키마 버전)이 바뀐다는 것을 편집자에게 알려주기 위해 함께 불러온다.
+  const [lifecycle, setLifecycle] = useState<'DRAFT' | 'PUBLISHED' | null>(null);
+  const [schemaVersion, setSchemaVersion] = useState<number | null>(null);
 
   // 기존 양식 편집 시, 서버 API(Postgres 운영 메타데이터 + Elasticsearch 필드 구성)에서
   // 실제 데이터를 불러온다. id가 없으면(신규 작성) 빈 양식에서 시작한다.
@@ -64,6 +68,8 @@ export default function FormBuilder() {
         if (cancelled || !json?.form) return;
         const { form } = json;
         setTemplate({ id: form.id, title: form.title, description: form.description, fields: form.fields });
+        setLifecycle(form.lifecycle ?? null);
+        setSchemaVersion(form.schemaVersion ?? null);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -196,6 +202,8 @@ export default function FormBuilder() {
       }
       const { form } = await res.json();
       setTemplate({ id: form.id, title: form.title, description: form.description, fields: form.fields });
+      setLifecycle(form.lifecycle ?? null);
+      setSchemaVersion(form.schemaVersion ?? null);
       alert('저장되었습니다.');
     } finally {
       setSaving(false);
@@ -266,8 +274,25 @@ export default function FormBuilder() {
         <div className="max-w-4xl mx-auto">
           <div className="bg-white rounded-xl shadow-md border border-gray-200 min-h-[600px] p-8">
             <div className="flex justify-between items-center mb-6 border-b pb-4">
-              <h1 className="text-2xl font-bold text-gray-900">보고서 양식 편집기</h1>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-bold text-gray-900">보고서 양식 편집기</h1>
+                {lifecycle && (
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${
+                    lifecycle === 'PUBLISHED'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-amber-50 text-amber-700 border-amber-200'
+                  }`}>
+                    {lifecycle === 'PUBLISHED' ? `확정됨 · 스키마 v${schemaVersion}` : '초안 (미확정)'}
+                  </span>
+                )}
+              </div>
               <div className="flex space-x-2">
+                {template.id && (
+                  <a href={`/admin/forms/${template.id}/api`} className="flex items-center space-x-2 px-4 py-2 bg-slate-100 text-slate-700 rounded hover:bg-slate-200 transition-colors">
+                    <Database className="w-4 h-4" />
+                    <span>API 연동</span>
+                  </a>
+                )}
                 <button onClick={() => setShowPreview(true)} className="flex items-center space-x-2 px-4 py-2 bg-indigo-100 text-indigo-700 rounded hover:bg-indigo-200 transition-colors">
                   <Globe className="w-4 h-4" />
                   <span>배포 사전 확인</span>
@@ -278,6 +303,15 @@ export default function FormBuilder() {
                 </button>
               </div>
             </div>
+
+            {/* 확정된 양식지 수정 시 계약 변경 경고 */}
+            {lifecycle === 'PUBLISHED' && (
+              <div className="mb-6 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                이 양식지는 <strong>확정(PUBLISHED)</strong>되어 외부 시스템이 연동 중일 수 있습니다.
+                필드를 수정해 저장하면 <strong>스키마 버전이 v{schemaVersion} → v{(schemaVersion ?? 1) + 1}</strong>로 올라가며,
+                연동 측 매핑 점검이 필요할 수 있습니다.
+              </div>
+            )}
 
             <div className="space-y-4 mb-8">
               <input type="text" placeholder="보고서 제목" className="w-full text-3xl font-bold border-0 border-b-2 border-transparent hover:border-gray-200 focus:border-blue-500 outline-none" value={template.title} onChange={(e) => setTemplate({ ...template, title: e.target.value })} />

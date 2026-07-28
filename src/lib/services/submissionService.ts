@@ -177,8 +177,9 @@ export async function recentSubmissionsAcrossForms(limit = 10, actor?: AdminUser
 
   let accessibleFormIds: Set<string> | null = null;
   if (actor && actor.role !== 'SUPER_ADMIN') {
+    // fromUser가 권한을 받는 쪽(요청자), toUser가 승인하는 소유자 — 공유받은 건 fromUserId로 찾는다.
     const approvedShares = await prisma.shareRequest.findMany({
-      where: { toUserId: actor.id, status: 'APPROVED', formId: { in: formIds } },
+      where: { fromUserId: actor.id, status: 'APPROVED', formId: { in: formIds } },
       select: { formId: true },
     });
     accessibleFormIds = new Set([

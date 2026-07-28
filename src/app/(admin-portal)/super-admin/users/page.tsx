@@ -13,16 +13,12 @@ export default function AdminUsersManagementPage() {
   const [saving, setSaving] = useState(false);
   const [reassignOwnerId, setReassignOwnerId] = useState('');
 
-  const load = () => {
-    setLoading(true);
+  useEffect(() => {
+    // 최초 마운트 시 loading 초기값이 이미 true이므로 effect 안에서 다시 설정하지 않는다.
     fetch('/api/admin-users')
       .then((res) => (res.ok ? res.json() : { users: [] }))
       .then((json) => setUsers(json.users ?? []))
       .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    load();
   }, []);
 
   const openEdit = (user: AdminUserItem) => {

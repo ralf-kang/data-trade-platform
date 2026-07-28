@@ -41,6 +41,16 @@ export interface SubmissionDocument {
   submittedAt: string;
   // 폼의 필드 구성에 따라 col1..colN 등 키가 계속 늘어나는 비정형 응답 데이터.
   data: Record<string, unknown>;
+  /**
+   * 외부 시스템이 부여한 고유 키(선택). 대량 입력 시 같은 externalId가 이미 있으면
+   * 중복으로 판정해 재삽입하지 않는다 — 네트워크 재시도로 데이터가 중복 적재되는 것을 막는
+   * 멱등성(idempotency) 장치.
+   */
+  externalId?: string;
+  /** 입력 경로 — 'web'(공개 응답 화면) 또는 'api'(외부 연동). */
+  source?: 'web' | 'api';
+  /** 입력 시점의 폼 스키마 버전 — 나중에 계약 변경 전/후 데이터를 구분할 수 있다. */
+  schemaVersion?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -67,6 +77,9 @@ const SUBMISSION_MAPPING = {
     formId: { type: 'keyword' },
     submissionId: { type: 'keyword' },
     submittedAt: { type: 'date' },
+    externalId: { type: 'keyword' },
+    source: { type: 'keyword' },
+    schemaVersion: { type: 'integer' },
     // col1, col2 ... 처럼 폼별로 늘어나는 응답 컬럼 — 동적 매핑.
     data: { type: 'object', dynamic: true },
   },
@@ -75,9 +88,17 @@ const SUBMISSION_MAPPING = {
 let indicesReady: Promise<void> | null = null;
 
 /**
- * 두 인덱스가 없으면 매핑과 함께 생성한다. 여러 요청이 동시에 들어와도 한 번만
- * 수행되도록 진행 중인 Promise를 캐싱한다 (서버리스/멀티 워커 환경에서도 안전하게
- * 재시도할 수 있도록 실패 시 캐시를 비운다).
+ * 두 인덱스가 없으면 매핑과 함께 생성하고, **이미 존재하면 putMapping으로 매핑을 갱신**한다.
+ * 코드가 새 필드(예: externalId)를 도입해도 기존 인덱스에는 자동 반영되지 않기 때문이다 —
+ * 갱신 없이 새 필드가 문서로 먼저 들어가면 dynamic mapping이 `text`로 잡아버려
+ * exact-term 조회(멱등성 판정 등)가 조용히 빗나가는 사고가 난다.
+ *
+ * putMapping은 "신규 필드 추가"만 허용하고, 이미 다른 타입으로 굳은 필드가 있으면
+ * 요청 전체가 실패한다. 그 경우는 기동을 막는 대신 경고만 남긴다 — 구버전 인덱스는
+ * 재색인(reindex)으로 정리해야 함을 로그로 알린다.
+ *
+ * 여러 요청이 동시에 들어와도 한 번만 수행되도록 진행 중인 Promise를 캐싱한다
+ * (실패 시 캐시를 비워 재시도 가능).
  */
 export async function ensureIndices(): Promise<void> {
   if (!indicesReady) {
@@ -89,6 +110,15 @@ export async function ensureIndices(): Promise<void> {
         const exists = await elasticClient.indices.exists({ index });
         if (!exists) {
           await elasticClient.indices.create({ index, mappings });
+        } else {
+          await elasticClient.indices
+            .putMapping({ index, ...mappings })
+            .catch((err) => {
+              console.warn(
+                `[elasticsearch] ${index} 매핑 갱신 실패 — 기존 필드 타입 충돌. ` +
+                  `구버전 인덱스라면 reindex가 필요합니다: ${(err as Error).message}`
+              );
+            });
         }
       }
     })().catch((err) => {
@@ -170,6 +200,104 @@ export async function updateSubmission(
     doc: { data },
     refresh: 'wait_for',
   });
+}
+
+/**
+ * externalId로 이미 적재된 제출이 있는지 확인한다 (대량 입력 멱등성 판정용).
+ * 여러 건을 한 번에 조회해 N+1 쿼리를 피한다.
+ */
+export async function findExistingExternalIds(
+  formId: string,
+  externalIds: string[]
+): Promise<Set<string>> {
+  if (externalIds.length === 0) return new Set();
+  await ensureIndices();
+  const res = await elasticClient.search<SubmissionDocument>({
+    index: INDEX_NAMES.SUBMISSIONS,
+    size: externalIds.length,
+    _source: ['externalId'],
+    query: {
+      bool: {
+        filter: [{ term: { formId } }, { terms: { externalId: externalIds } }],
+      },
+    },
+  });
+  return new Set(
+    res.hits.hits.map((h) => h._source?.externalId).filter((v): v is string => !!v)
+  );
+}
+
+/** 여러 제출을 한 번의 bulk 요청으로 적재한다 (대량 입력 성능). */
+export async function bulkCreateSubmissions(docs: SubmissionDocument[]): Promise<void> {
+  if (docs.length === 0) return;
+  await ensureIndices();
+  const operations = docs.flatMap((doc) => [
+    { index: { _index: INDEX_NAMES.SUBMISSIONS, _id: `${doc.formId}__${doc.submissionId}` } },
+    doc,
+  ]);
+  const res = await elasticClient.bulk({ operations, refresh: 'wait_for' });
+  if (res.errors) {
+    const firstError = res.items.find((i) => i.index?.error)?.index?.error;
+    throw new Error(`bulk index failed: ${firstError?.reason ?? 'unknown'}`);
+  }
+}
+
+export interface CursorListParams {
+  formId: string;
+  /** 이 시각 이후에 제출된 것만 (증분 동기화용) */
+  since?: string;
+  /** 이전 응답의 nextCursor */
+  cursor?: string;
+  pageSize?: number;
+}
+
+export interface CursorListResult {
+  items: SubmissionDocument[];
+  nextCursor: string | null;
+  total: number;
+}
+
+/**
+ * 외부 연동용 대량 조회 — search_after 기반 커서 페이지네이션.
+ *
+ * 화면용 `listSubmissions`의 from/size 방식은 깊은 페이지에서 급격히 느려지고 ES의
+ * max_result_window(기본 10,000)에 걸린다. 전체 데이터를 순회해야 하는 API 연동에서는
+ * search_after 커서가 적합하다.
+ */
+export async function listSubmissionsByCursor({
+  formId,
+  since,
+  cursor,
+  pageSize = 100,
+}: CursorListParams): Promise<CursorListResult> {
+  await ensureIndices();
+  const size = Math.min(pageSize, 1000);
+  const res = await elasticClient.search<SubmissionDocument>({
+    index: INDEX_NAMES.SUBMISSIONS,
+    size,
+    // 동일 시각 제출이 있어도 순서가 흔들리지 않도록 submissionId를 tie-breaker로 둔다.
+    sort: [{ submittedAt: 'asc' }, { submissionId: 'asc' }],
+    ...(cursor ? { search_after: JSON.parse(Buffer.from(cursor, 'base64url').toString()) } : {}),
+    query: {
+      bool: {
+        filter: [
+          { term: { formId } },
+          ...(since ? [{ range: { submittedAt: { gt: since } } }] : []),
+        ],
+      },
+    },
+    track_total_hits: true,
+  });
+
+  const hits = res.hits.hits;
+  const total = typeof res.hits.total === 'number' ? res.hits.total : res.hits.total?.value ?? 0;
+  const lastSort = hits.length === size ? hits[hits.length - 1].sort : undefined;
+
+  return {
+    items: hits.map((h) => h._source).filter((d): d is SubmissionDocument => !!d),
+    nextCursor: lastSort ? Buffer.from(JSON.stringify(lastSort)).toString('base64url') : null,
+    total,
+  };
 }
 
 export interface ListSubmissionsParams {

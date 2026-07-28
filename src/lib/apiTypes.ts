@@ -22,8 +22,26 @@ export interface FormListItem {
   createdAt: string;
   updatedAt: string;
   active: boolean;
+  lifecycle: 'DRAFT' | 'PUBLISHED';
+  schemaVersion: number;
+  publishedAt: string | null;
   // /api/forms?withAccess=1 에서만 채워짐 (데이터 허브 화면 전용).
   dataAccess?: 'owner' | 'shared' | 'super-admin' | 'none';
+}
+
+export interface ApiKeyItem {
+  id: string;
+  formId: string;
+  name: string;
+  keyPrefix: string;
+  scope: 'READ' | 'WRITE' | 'READ_WRITE';
+  rateLimitPerMin: number;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  lastUsedAt: string | null;
+  useCount: number;
+  createdBy: string;
+  createdAt: string;
 }
 
 export interface AdminUserItem {

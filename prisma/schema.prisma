@@ -31,6 +31,22 @@ enum FormStatus {
   CLOSED
 }
 
+// 양식지 설계 단계 — 외부 API 연동의 "계약(contract)"이 언제부터 유효한지를 가른다.
+//   DRAFT     : 아직 만드는 중. 필드 구성이 언제든 바뀔 수 있으므로 외부 API 쓰기를 막는다.
+//   PUBLISHED : 확정됨. 이 시점의 필드 구성이 API 계약이 되고, 외부 시스템이 연동을 시작할 수 있다.
+// 확정 후 필드를 수정하면 schemaVersion이 올라가고, 외부 연동 측이 변경을 감지할 수 있다.
+enum FormLifecycle {
+  DRAFT
+  PUBLISHED
+}
+
+// API 키에 부여하는 권한 범위.
+enum ApiScope {
+  READ // 제출 데이터 조회(대량 포함)
+  WRITE // 제출 데이터 입력(대량 포함)
+  READ_WRITE
+}
+
 enum ShareRequestStatus {
   PENDING
   APPROVED
@@ -77,6 +93,12 @@ model FormRegistry {
   // 양식지 활성화 기간(선택) — 설정 시 이 기간 밖에서는 공개 응답 페이지 접근이 거부된다.
   startsAt        DateTime?
   expiresAt       DateTime?
+  // 설계 단계 — DRAFT인 동안에는 외부 API 쓰기를 거부한다(필드 구성이 계속 바뀌므로).
+  lifecycle       FormLifecycle @default(DRAFT)
+  // 확정(PUBLISHED) 이후 필드 구성을 바꿀 때마다 1씩 올라간다. 외부 연동 측이
+  // 계약 변경을 감지하는 기준값이며, API 응답 헤더(X-Form-Schema-Version)로도 노출한다.
+  schemaVersion   Int        @default(1)
+  publishedAt     DateTime?
   viewCount       Int        @default(0)
   submissionCount Int        @default(0)
   createdAt       DateTime   @default(now())
@@ -85,8 +107,34 @@ model FormRegistry {
   shareRequests ShareRequest[]
   auditLogs     AuditLog[]
   notifications AdminNotification[]
+  apiKeys       ApiKey[]
 
   @@map("form_registry")
+}
+
+// 외부 시스템이 제출 데이터를 대량 조회/입력할 때 사용하는 API 키.
+//
+// 원문 키는 저장하지 않는다(생성 시 1회만 화면에 노출). 대신 SHA-256 해시만 보관하고,
+// 목록 화면에서 어떤 키인지 식별할 수 있도록 접두 8자(prefix)만 평문으로 남긴다.
+model ApiKey {
+  id          String       @id @default(cuid())
+  formId      String
+  form        FormRegistry @relation(fields: [formId], references: [id], onDelete: Cascade)
+  name        String // 사람이 알아볼 용도 ("외부 파트너사 A 연동" 등)
+  keyPrefix   String // 평문 접두 8자 — 목록에서 키 식별용
+  keyHash     String       @unique // SHA-256(원문키)
+  scope       ApiScope     @default(READ)
+  // 분당 허용 요청 수 — 대량 추출 남용을 막기 위한 키 단위 상한.
+  rateLimitPerMin Int      @default(60)
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  lastUsedAt  DateTime?
+  useCount    Int          @default(0)
+  createdBy   String // 발급한 관리자 이메일
+  createdAt   DateTime     @default(now())
+
+  @@index([formId])
+  @@map("api_keys")
 }
 
 model AuditLog {

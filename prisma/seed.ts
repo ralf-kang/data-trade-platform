@@ -39,11 +39,16 @@ const FORM_TEMPLATE_MAPPING = {
   },
 } as const;
 
+// NOTE: src/lib/elasticsearch.ts 의 SUBMISSION_MAPPING과 동일하게 유지할 것.
+// (이 스크립트는 strip-types 직접 실행이라 @/ 경로 별칭을 쓸 수 없어 사본을 둔다.)
 const SUBMISSION_MAPPING = {
   properties: {
     formId: { type: 'keyword' },
     submissionId: { type: 'keyword' },
     submittedAt: { type: 'date' },
+    externalId: { type: 'keyword' },
+    source: { type: 'keyword' },
+    schemaVersion: { type: 'integer' },
     data: { type: 'object', dynamic: true },
   },
 } as const;
@@ -67,6 +72,20 @@ async function ensureIndices() {
 // 필요하다.
 const USERS = [
   { email: 'ralfkang@ktl.re.kr', name: '최고관리자', role: 'SUPER_ADMIN' as const },
+];
+
+// 과거 시드가 만들어 둔 목업 계정 목록. 시드에서 빼는 것만으로는 이미 DB에 들어간
+// 레코드가 사라지지 않으므로, 아래 계정들은 명시적으로 삭제한다(소유 양식지는 먼저
+// 최고관리자에게 귀속시킨다). 실제 운영 계정을 실수로 지우지 않도록 "이 목록에
+// 있는 이메일만" 대상으로 한다.
+const LEGACY_MOCK_EMAILS = [
+  'admin@company.com',
+  'marketing@company.com',
+  'hr@company.com',
+  'facilities@company.com',
+  'it-support@company.com',
+  'qa@company.com',
+  'design@company.com',
 ];
 
 // -----------------------------------------------------------------------
@@ -214,23 +233,57 @@ async function main() {
   for (const u of USERS) {
     const user = await prisma.adminUser.upsert({
       where: { email: u.email },
-      update: {},
+      update: { role: u.role },
       create: { email: u.email, name: u.name, password: 'unset', role: u.role },
     });
     userByEmail.set(u.email, user);
   }
 
+  const superAdmin = userByEmail.get('ralfkang@ktl.re.kr')!;
+
+  // 과거 시드가 남겨둔 목업 계정 정리 — 소유 양식지를 최고관리자에게 귀속시킨 뒤 삭제한다.
+  // (참조 무결성 때문에 공유요청/알림을 먼저 지운다.)
+  const legacyUsers = await prisma.adminUser.findMany({
+    where: { email: { in: LEGACY_MOCK_EMAILS } },
+    select: { id: true, email: true },
+  });
+  if (legacyUsers.length > 0) {
+    const legacyIds = legacyUsers.map((u) => u.id);
+    console.log(`[seed] 목업 계정 ${legacyUsers.length}개 정리 (소유 양식지는 최고관리자로 귀속)...`);
+    await prisma.$transaction([
+      prisma.formRegistry.updateMany({
+        where: { ownerId: { in: legacyIds } },
+        data: { ownerId: superAdmin.id },
+      }),
+      prisma.shareRequest.deleteMany({
+        where: { OR: [{ fromUserId: { in: legacyIds } }, { toUserId: { in: legacyIds } }] },
+      }),
+      prisma.adminNotification.deleteMany({ where: { userId: { in: legacyIds } } }),
+      prisma.adminUser.deleteMany({ where: { id: { in: legacyIds } } }),
+    ]);
+  }
+
   console.log('[seed] 폼 레지스트리(정형) + 폼 템플릿/제출데이터(비정형) 생성...');
   for (const form of FORMS) {
     const owner = userByEmail.get(form.ownerEmail);
+    // 데모 양식지는 확정(PUBLISHED) 상태로 넣어 외부 연동 API를 바로 시험해 볼 수 있게 한다.
+    // (신규로 만드는 양식지는 DRAFT에서 시작해, 설계가 끝난 뒤 사용자가 직접 확정한다.)
     await prisma.formRegistry.upsert({
       where: { id: form.id },
-      update: { status: form.status, ownerId: owner?.id, deployUrl: `/q/${form.id}` },
+      update: {
+        status: form.status,
+        ownerId: owner?.id,
+        deployUrl: `/q/${form.id}`,
+        lifecycle: 'PUBLISHED',
+        publishedAt: new Date(),
+      },
       create: {
         id: form.id,
         status: form.status,
         ownerId: owner?.id,
         deployUrl: `/q/${form.id}`,
+        lifecycle: 'PUBLISHED',
+        publishedAt: new Date(),
         submissionCount: form.submissions.length,
       },
     });

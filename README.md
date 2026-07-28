@@ -97,6 +97,59 @@ npm run dev
 
 ---
 
+## 🔌 외부 연동 API (v1) — 대량 조회/입력
+
+외부 시스템(ERP·그룹웨어·타 서비스)이 양식지 단위로 제출 데이터를 대량 송수신할 수 있는 공개 API입니다.
+관리자 화면의 **배포 URL 관리 → DB 아이콘** 또는 **빌더 → "API 연동"** 버튼으로 각 양식지의 API 콘솔(`/admin/forms/{id}/api`)에 진입해 키 발급·계약 확인·테스트를 한 곳에서 할 수 있습니다.
+
+### 양식지 라이프사이클과 계약(Contract)
+| 상태 | 의미 | 외부 API |
+|---|---|---|
+| `DRAFT` (초안) | 설계 진행 중 — 필드 구성이 계속 바뀔 수 있음 | 조회만 가능, **입력 차단** (`409 FORM_NOT_PUBLISHED`) |
+| `PUBLISHED` (확정) | 필드 구성이 연동 계약으로 고정됨 | 조회+입력 가능 |
+
+- 확정 후 필드를 수정하면 **schemaVersion이 자동 증가**하며, 모든 v1 응답의 `X-Form-Schema-Version` 헤더로 노출됩니다. 연동 측은 이 값이 바뀌면 매핑을 점검해야 합니다.
+- 확정/초안 전환은 API 콘솔 상단 버튼(내부적으로 `POST /api/forms/{id}/publish`)으로 합니다.
+
+### 인증 — 양식지 단위 API 키
+- `Authorization: Bearer wre_...` 헤더. 키는 특정 양식지에 묶이며 다른 양식지에는 사용 불가.
+- 권한: `READ` / `WRITE` / `READ_WRITE`, 키별 분당 요청 한도·만료일 설정, 즉시 폐기 가능.
+- 원문 키는 발급 시 1회만 표시되고 서버에는 SHA-256 해시만 저장됩니다. 발급/폐기는 감사 로그에 기록됩니다.
+
+### 엔드포인트
+```
+GET  /api/v1/forms/{formId}/schema              # 연동 계약 조회 (필드 id/타입/필수/제약)
+GET  /api/v1/forms/{formId}/submissions         # 대량 조회 — 커서 페이지네이션
+     ?pageSize=100 (최대 1000)
+     ?since=2026-07-01T00:00:00Z                #   증분 동기화 (이 시각 이후 신규분만)
+     ?cursor=...                                #   이전 응답의 nextCursor로 이어받기
+POST /api/v1/forms/{formId}/submissions         # 단건 입력 (strict 검증)
+POST /api/v1/forms/{formId}/submissions/bulk    # 대량 입력 (최대 1,000행/요청)
+```
+
+### 대량 입력의 신뢰성 장치
+- **행별 결과**: 응답이 각 행의 `accepted / rejected / duplicate` 상태와 오류 사유를 담으므로, 거부된 행만 고쳐 재전송하면 됩니다. (HTTP 200 전량수용 / **207** 부분수용 / 422 전량거부)
+- **멱등성**: 행에 `externalId`(외부 시스템 고유키)를 넣으면 같은 배치를 재전송해도 중복 적재되지 않습니다 — 타임아웃 후 재시도가 안전해집니다.
+- **모드 선택**: `lenient`(기본, 유효한 행만 적재) / `strict`(한 건이라도 오류면 전량 거부 — 정산성 데이터용).
+- **비정형 유연성**: 폼에 정의되지 않은 여분 키도 버리지 않고 Elasticsearch에 그대로 적재하고 `unknownFields`로 보고합니다. 연동 측이 필드를 먼저 보내는 과도기에도 데이터가 유실되지 않습니다.
+- **검증**: 필수값·정규식·숫자형·선택지(options) 검증을 서버에서 수행하고, 거부 발생 시 양식지 소유자에게 인앱 알림을 보냅니다.
+
+### 사용 예시
+```bash
+# 1) 계약 확인
+curl -H "Authorization: Bearer $API_KEY" https://host/api/v1/forms/f-101/schema
+
+# 2) 전체 데이터 동기화 (nextCursor가 null이 될 때까지 반복)
+curl -H "Authorization: Bearer $API_KEY" "https://host/api/v1/forms/f-101/submissions?pageSize=500"
+
+# 3) 대량 입력 (재전송 안전)
+curl -X POST -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" \
+  https://host/api/v1/forms/f-101/submissions/bulk \
+  -d '{"mode":"lenient","rows":[{"externalId":"ERP-001","data":{"f101-1":"홍길동","f101-2":"010-1234-5678"}}]}'
+```
+
+---
+
 ## ⚖️ 데이터베이스제작자 권리 보호 (저작권법 제4장)
 
 수집되는 폼 필드 구성·제출 데이터는 「저작권법」 제2조 제19호의 "데이터베이스"에 해당하고,

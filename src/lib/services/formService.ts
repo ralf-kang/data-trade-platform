@@ -30,6 +30,9 @@ export interface FormView {
   createdAt: string;
   updatedAt: string;
   active: boolean;
+  lifecycle: 'DRAFT' | 'PUBLISHED';
+  schemaVersion: number;
+  publishedAt: string | null;
 }
 
 function toFormView(
@@ -39,6 +42,9 @@ function toFormView(
     deployUrl: string | null;
     startsAt: Date | null;
     expiresAt: Date | null;
+    lifecycle: string;
+    schemaVersion: number;
+    publishedAt: Date | null;
     viewCount: number;
     submissionCount: number;
     createdAt: Date;
@@ -59,6 +65,9 @@ function toFormView(
     deployUrl: registry.deployUrl,
     startsAt: registry.startsAt?.toISOString() ?? null,
     expiresAt: registry.expiresAt?.toISOString() ?? null,
+    lifecycle: registry.lifecycle as 'DRAFT' | 'PUBLISHED',
+    schemaVersion: registry.schemaVersion,
+    publishedAt: registry.publishedAt?.toISOString() ?? null,
     viewCount: registry.viewCount,
     submissionCount: registry.submissionCount,
     createdAt: registry.createdAt.toISOString(),
@@ -126,8 +135,10 @@ export async function listFormsWithAccess(
   if (actor.role === 'SUPER_ADMIN') {
     return forms.map((f) => ({ ...f, dataAccess: 'super-admin' as const }));
   }
+  // ShareRequest에서 fromUser = 권한을 요청/부여받는 쪽, toUser = 승인하는 소유자다.
+  // 따라서 "내가 공유받은 양식"은 fromUserId로 찾아야 한다.
   const approvedShares = await prisma.shareRequest.findMany({
-    where: { toUserId: actor.id, status: 'APPROVED' },
+    where: { fromUserId: actor.id, status: 'APPROVED' },
     select: { formId: true },
   });
   const sharedFormIds = new Set(approvedShares.map((s) => s.formId));
@@ -218,11 +229,34 @@ export async function updateForm(
   };
   await upsertFormTemplate(updated);
 
+  // 확정(PUBLISHED)된 양식지의 필드 구성이 바뀌면 외부 연동의 계약이 바뀐 것이므로
+  // schemaVersion을 올린다 — 연동 측이 X-Form-Schema-Version으로 변경을 감지할 수 있다.
+  // (제목/설명만 바뀐 경우는 계약에 영향이 없으므로 버전을 올리지 않는다.)
+  const before = await prisma.formRegistry.findUniqueOrThrow({ where: { id: formId } });
+  const fieldsChanged =
+    input.fields !== undefined &&
+    JSON.stringify(existing.fields) !== JSON.stringify(input.fields);
+  const bumpVersion = before.lifecycle === 'PUBLISHED' && fieldsChanged;
+
   const registry = await prisma.formRegistry.update({
     where: { id: formId },
-    data: { updatedAt: new Date() },
+    data: {
+      updatedAt: new Date(),
+      ...(bumpVersion ? { schemaVersion: { increment: 1 } } : {}),
+    },
     include: { owner: { select: { name: true } } },
   });
+
+  if (bumpVersion) {
+    await logAudit({
+      userEmail: actor.email,
+      action: 'FORM_SCHEMA_VERSION_BUMP',
+      target: `Form [${formId}]`,
+      details: `확정된 양식지의 필드 구성 변경 — 스키마 버전 v${before.schemaVersion} → v${registry.schemaVersion} (외부 연동 계약 변경)`,
+      severity: 'warning',
+      formId,
+    });
+  }
 
   await logAudit({
     userEmail: actor.email,
@@ -248,6 +282,42 @@ export async function setFormStatus(
     details: status === 'OPEN' ? '배포 오픈으로 전환' : '배포 마감 처리',
     formId,
   });
+}
+
+/**
+ * 양식지 확정 상태 전환.
+ *   DRAFT → PUBLISHED : 현재 필드 구성이 외부 연동 계약으로 확정되고 API 쓰기가 열린다.
+ *   PUBLISHED → DRAFT : 설계 재작업 — 외부 입력이 즉시 차단된다(오적재 방지).
+ */
+export async function setFormLifecycle(
+  formId: string,
+  lifecycle: 'DRAFT' | 'PUBLISHED',
+  actor: AdminUser
+): Promise<FormView | null> {
+  const registry = await prisma.formRegistry.update({
+    where: { id: formId },
+    data: {
+      lifecycle,
+      ...(lifecycle === 'PUBLISHED' ? { publishedAt: new Date() } : {}),
+    },
+    include: { owner: { select: { name: true } } },
+  });
+
+  await logAudit({
+    userEmail: actor.email,
+    action: lifecycle === 'PUBLISHED' ? 'FORM_PUBLISH' : 'FORM_UNPUBLISH',
+    target: `Form [${formId}]`,
+    details:
+      lifecycle === 'PUBLISHED'
+        ? `양식지 확정 — 스키마 v${registry.schemaVersion}이 외부 연동 계약으로 고정되고 API 입력이 열림`
+        : '양식지를 초안으로 되돌림 — 외부 API 입력 차단',
+    severity: 'warning',
+    formId,
+  });
+
+  const template = await getFormTemplate(formId);
+  if (!template) return null;
+  return toFormView(registry, template);
 }
 
 /** 슈퍼관리자 전용 — 양식지 소유권을 다른 관리자(또는 슈퍼관리자 자신)에게 이전한다. */
@@ -301,8 +371,9 @@ export async function canAccessFormData(formId: string, actor: AdminUser): Promi
   if (!registry) return false;
   if (registry.ownerId === actor.id) return true;
 
+  // fromUser가 권한을 받는 쪽(요청자), toUser가 승인하는 소유자다 — 공유받은 사람은 fromUserId로 찾는다.
   const approvedShare = await prisma.shareRequest.findFirst({
-    where: { formId, toUserId: actor.id, status: 'APPROVED' },
+    where: { formId, fromUserId: actor.id, status: 'APPROVED' },
   });
   return !!approvedShare;
 }
