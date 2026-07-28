@@ -3,12 +3,12 @@
 import React, { useEffect, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { FormField, FieldType, FormTemplate } from './types';
-import { 
-  Type, AlignLeft, Hash, List, 
+import {
+  Type, AlignLeft, Hash, List,
   CheckSquare, Calendar, Upload, PenTool,
   Image as ImageIcon, Images, Video, Table, FileBox, MessageSquare, Link as LinkIcon,
-  Layers, BellOff, ShieldAlert, Database, FileSpreadsheet, EyeOff, Save, ArrowUp, ArrowDown, Trash2, Plus,
-  Smartphone, Monitor, Globe, Regex, MapPin, CheckSquare as CheckIcon, LayoutGrid, Star, GripHorizontal
+  Layers, BellOff, ShieldAlert, Database, FileSpreadsheet, Save, ArrowUp, ArrowDown, Trash2,
+  Smartphone, Monitor, Globe, Regex, MapPin, Star, GripHorizontal, Sparkles, Plus, X, SlidersHorizontal
 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import AiAutoGenerator from './AiAutoGenerator';
@@ -38,6 +38,8 @@ const FIELD_TYPES: { type: FieldType; label: string; icon: React.ReactNode }[] =
   { type: 'regex-input', label: '정규식 검증 입력', icon: <Regex className="w-4 h-4 text-blue-600" /> },
   { type: 'map-address', label: '주소 및 지도', icon: <MapPin className="w-4 h-4 text-green-600" /> },
 ];
+
+const OPTIONS_TYPES: FieldType[] = ['select', 'radio', 'checkbox'];
 
 export default function FormBuilder() {
   const searchParams = useSearchParams();
@@ -78,11 +80,16 @@ export default function FormBuilder() {
   const [showPreview, setShowPreview] = useState(false);
   const [previewMode, setPreviewMode] = useState<'mobile' | 'pc' | 'hybrid'>('hybrid');
 
+  // AI 자동 생성기 — 항상 펼쳐 보이지 않고, 좌측 툴박스의 아이콘을 눌렀을 때만 모달로 노출.
+  const [showAiGenerator, setShowAiGenerator] = useState(false);
+
   // Bulk Selection State
   const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set());
 
-  // Drag and Drop (Simple Sort State)
-  const [draggedFieldId, setDraggedFieldId] = useState<string | null>(null);
+  // 우측 상세 옵션 패널에서 편집 중인 필드 (단일 선택) — 캔버스에는 필수 항목(타입/이름/필수
+  // 여부)만 남기고, 그 외 세부 설정은 여기서만 다룬다.
+  const [activeFieldId, setActiveFieldId] = useState<string | null>(null);
+  const activeField = fields.find((f) => f.id === activeFieldId) ?? null;
 
   const addField = (type: FieldType) => {
     const newField: FormField = {
@@ -92,9 +99,10 @@ export default function FormBuilder() {
       required: false,
       nullable: true,
       width: '100%',
-      options: ['옵션 1', '옵션 2']
+      options: OPTIONS_TYPES.includes(type) ? ['옵션 1', '옵션 2'] : undefined,
     };
     setFields([...fields, newField]);
+    setActiveFieldId(newField.id);
   };
 
   const addFavoriteBlock = () => {
@@ -127,10 +135,11 @@ export default function FormBuilder() {
 
   const handleBulkAction = (action: 'require' | 'optional' | 'delete') => {
     if (selectedFields.size === 0) return;
-    
+
     if (action === 'delete') {
       if(confirm(`선택한 ${selectedFields.size}개 필드를 정말 삭제하시겠습니까?`)) {
         setFields(fields.filter(f => !selectedFields.has(f.id)));
+        if (activeFieldId && selectedFields.has(activeFieldId)) setActiveFieldId(null);
         setSelectedFields(new Set());
       }
       return;
@@ -147,6 +156,7 @@ export default function FormBuilder() {
 
   const removeField = (id: string) => {
     setFields(fields.filter(f => f.id !== id));
+    if (activeFieldId === id) setActiveFieldId(null);
   };
 
   const moveField = (index: number, direction: 'up' | 'down') => {
@@ -203,8 +213,17 @@ export default function FormBuilder() {
   return (
     <div className="flex h-screen bg-gray-100">
       {/* Sidebar: Toolbox */}
-      <div className="w-64 bg-white border-r p-4 overflow-y-auto">
-        <h2 className="text-lg font-bold mb-4 text-gray-800">양식 도구</h2>
+      <div className="w-64 bg-white border-r p-4 overflow-y-auto shrink-0">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold text-gray-800">양식 도구</h2>
+          <button
+            onClick={() => setShowAiGenerator(true)}
+            className="p-2 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-sm hover:opacity-90 transition-opacity"
+            title="AI 양식 자동 생성기"
+          >
+            <Sparkles className="w-4 h-4" />
+          </button>
+        </div>
         <div className="grid grid-cols-2 gap-2 mb-6">
           {FIELD_TYPES.map((ft) => (
             <button
@@ -219,7 +238,7 @@ export default function FormBuilder() {
         </div>
         <div className="p-4 bg-gray-50 border-t border-gray-200">
           <h3 className="font-semibold text-gray-700 text-sm mb-3">즐겨찾기 블록 / 추천</h3>
-          <button 
+          <button
             onClick={addFavoriteBlock}
             className="w-full flex items-center justify-center space-x-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 p-3 rounded-lg transition-colors"
           >
@@ -245,8 +264,6 @@ export default function FormBuilder() {
         )}
 
         <div className="max-w-4xl mx-auto">
-          <AiAutoGenerator onGenerated={(newFields) => setFields([...fields, ...newFields])} />
-
           <div className="bg-white rounded-xl shadow-md border border-gray-200 min-h-[600px] p-8">
             <div className="flex justify-between items-center mb-6 border-b pb-4">
               <h1 className="text-2xl font-bold text-gray-900">보고서 양식 편집기</h1>
@@ -273,87 +290,101 @@ export default function FormBuilder() {
                 {selectedFields.size === fields.length && fields.length > 0 ? '전체 선택 해제' : '전체 선택'}
               </button>
             </div>
-            
+
+            {/* 캔버스에는 필수 항목(타입/이름/필수 여부)만 표시하고, 그 외 세부 설정은
+                오른쪽 패널에서 다룬다 — 목록이 길어져도 한눈에 훑어보기 쉽게 하기 위함. */}
             <div className="flex flex-wrap -mx-2 mt-4">
               {fields.map((field, index) => {
                 const isSelected = selectedFields.has(field.id);
+                const isActive = activeFieldId === field.id;
+                const fieldTypeInfo = FIELD_TYPES.find(t => t.type === field.type);
                 return (
                   <div key={field.id} className={`p-2 transition-all duration-200 ${field.width === '50%' ? 'w-1/2' : 'w-full'}`}>
-                    <div className={`p-5 rounded-lg border-2 ${isSelected ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 bg-white hover:border-gray-300'} shadow-sm relative group`}>
+                    <div
+                      onClick={() => setActiveFieldId(field.id)}
+                      className={`p-4 rounded-lg border-2 cursor-pointer shadow-sm relative group ${
+                        isActive ? 'border-blue-500 bg-blue-50/40' : isSelected ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 bg-white hover:border-gray-300'
+                      }`}
+                    >
                       <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <input type="checkbox" className="w-5 h-5 text-indigo-600 rounded border-gray-300 cursor-pointer" checked={isSelected} onChange={() => toggleSelection(field.id, true)} />
+                        <input type="checkbox" onClick={(e) => e.stopPropagation()} className="w-5 h-5 text-indigo-600 rounded border-gray-300 cursor-pointer" checked={isSelected} onChange={() => toggleSelection(field.id, true)} />
                       </div>
-                      <div className="absolute top-3 right-12 text-gray-300 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="absolute top-3 right-24 text-gray-300 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity">
                         <GripHorizontal className="w-5 h-5" />
                       </div>
 
                       <div className="absolute top-2 right-2 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => moveField(index, 'up')} className="p-1 text-gray-500 hover:text-blue-600 bg-white rounded shadow-sm" disabled={index === 0}><ArrowUp className="w-4 h-4" /></button>
-                        <button onClick={() => moveField(index, 'down')} className="p-1 text-gray-500 hover:text-blue-600 bg-white rounded shadow-sm" disabled={index === fields.length - 1}><ArrowDown className="w-4 h-4" /></button>
-                        <button onClick={() => removeField(field.id)} className="p-1 text-gray-500 hover:text-red-600 bg-white rounded shadow-sm"><Trash2 className="w-4 h-4" /></button>
+                        <button onClick={(e) => { e.stopPropagation(); moveField(index, 'up'); }} className="p-1 text-gray-500 hover:text-blue-600 bg-white rounded shadow-sm" disabled={index === 0}><ArrowUp className="w-4 h-4" /></button>
+                        <button onClick={(e) => { e.stopPropagation(); moveField(index, 'down'); }} className="p-1 text-gray-500 hover:text-blue-600 bg-white rounded shadow-sm" disabled={index === fields.length - 1}><ArrowDown className="w-4 h-4" /></button>
+                        <button onClick={(e) => { e.stopPropagation(); removeField(field.id); }} className="p-1 text-gray-500 hover:text-red-600 bg-white rounded shadow-sm"><Trash2 className="w-4 h-4" /></button>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-500 uppercase">항목 이름</label>
-                          <input type="text" value={field.label} onChange={(e) => updateField(field.id, { label: e.target.value })} className="w-full p-2 border rounded" />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-500 uppercase">설명 (선택)</label>
-                          <input type="text" value={field.description || ''} onChange={(e) => updateField(field.id, { description: e.target.value })} className="w-full p-2 border rounded" />
-                        </div>
+                      {/* 컴포넌트 타입 명시 배지 — 항목 이름을 자유롭게 바꿔도 이 필드가 어떤
+                          컴포넌트(23종 중 무엇)인지 항상 한눈에 식별할 수 있도록 표시한다. */}
+                      <div className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md bg-slate-100 border border-slate-200 text-slate-600 mb-3">
+                        {fieldTypeInfo?.icon}
+                        <span className="text-xs font-bold">{fieldTypeInfo?.label ?? field.type}</span>
+                        <span className="text-[10px] text-slate-400 font-mono">({field.type})</span>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg border border-gray-200 mt-4">
-                        <div className="flex flex-col space-y-3">
-                          <h4 className="text-xs font-bold text-gray-500 uppercase">입력 강제 옵션</h4>
-                          <label className="flex items-center space-x-2"><input type="checkbox" checked={field.required} onChange={(e) => updateField(field.id, { required: e.target.checked, nullable: !e.target.checked })} /> <span className="text-sm">필수</span></label>
-                        </div>
-                        <div className="flex flex-col space-y-3">
-                          <h4 className="text-xs font-bold text-gray-500 uppercase">레이아웃</h4>
-                          <div className="flex space-x-2">
-                            <button onClick={() => updateField(field.id, { width: '100%' })} className={`px-2 py-1 text-xs rounded border ${field.width === '100%' ? 'bg-indigo-50' : ''}`}>100%</button>
-                            <button onClick={() => updateField(field.id, { width: '50%' })} className={`px-2 py-1 text-xs rounded border ${field.width === '50%' ? 'bg-indigo-50' : ''}`}>50%</button>
-                          </div>
-                        </div>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="text"
+                          value={field.label}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => updateField(field.id, { label: e.target.value })}
+                          className="flex-1 p-2 border rounded font-medium"
+                          placeholder="항목 이름"
+                        />
+                        <label onClick={(e) => e.stopPropagation()} className="flex items-center space-x-1.5 shrink-0 text-sm text-gray-600">
+                          <input type="checkbox" checked={field.required} onChange={(e) => updateField(field.id, { required: e.target.checked, nullable: !e.target.checked })} />
+                          <span>필수</span>
+                        </label>
+                        <span className={`shrink-0 flex items-center text-xs font-bold ${isActive ? 'text-blue-600' : 'text-gray-400'}`}>
+                          <SlidersHorizontal className="w-3.5 h-3.5 mr-1" /> 상세설정
+                        </span>
                       </div>
-                      
-                      {/* Regex Specific Settings */}
-                      {field.type === 'regex-input' && (
-                        <div className="space-y-2 p-3 border border-blue-100 bg-blue-50 rounded mt-4">
-                          <label className="text-sm font-medium text-gray-700 flex items-center space-x-2">
-                            <Regex className="w-4 h-4 text-blue-600" />
-                            <span>정규식(Regex) 검증 패턴 설정</span>
-                          </label>
-                          <select
-                            className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 text-sm"
-                            value={field.regexPattern || ''}
-                            onChange={(e) => updateField(field.id, { regexPattern: e.target.value })}
-                          >
-                            <option value="">패턴 선택 (자유 입력)</option>
-                            <option value="^01(?:0|1|[6-9])-(?:\d{3}|\d{4})-\d{4}$">휴대폰 번호 (010-XXXX-XXXX)</option>
-                            <option value="^\d{2}[0-1]\d[0-3]\d-[1-4]\d{6}$">주민등록번호 (YYYYYY-XXXXXXX)</option>
-                            <option value="^\d{3}-\d{2}-\d{5}$">사업자등록번호 (XXX-XX-XXXXX)</option>
-                            <option value="^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$">이메일 주소</option>
-                          </select>
-                        </div>
-                      )}
-
-                      {/* Map Specific Warning */}
-                      {field.type === 'map-address' && (
-                        <div className="p-3 bg-green-50 border border-green-200 rounded text-sm text-green-800 flex items-start space-x-2 mt-4">
-                          <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                          <span>입력된 주소를 기반으로 Google Maps 또는 네이버 지도의 핀이 자동으로 표시되는 복합 컴포넌트입니다.</span>
-                        </div>
-                      )}
                     </div>
                   </div>
                 );
               })}
+              {fields.length === 0 && (
+                <div className="w-full p-12 text-center text-gray-400 border-2 border-dashed rounded-lg">
+                  왼쪽 도구에서 컴포넌트를 선택해 양식을 구성하세요.
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
+
+      {/* Right Panel: 선택된 필드의 상세 옵션 */}
+      <div className="w-80 bg-white border-l overflow-y-auto shrink-0">
+        {activeField ? (
+          <FieldDetailPanel
+            key={activeField.id}
+            field={activeField}
+            onChange={(updates) => updateField(activeField.id, updates)}
+            onClose={() => setActiveFieldId(null)}
+          />
+        ) : (
+          <div className="h-full flex flex-col items-center justify-center text-center p-8 text-gray-400">
+            <SlidersHorizontal className="w-8 h-8 mb-3" />
+            <p className="text-sm font-medium">필드를 선택하면</p>
+            <p className="text-sm font-medium">상세 옵션을 편집할 수 있습니다.</p>
+          </div>
+        )}
+      </div>
+
+      {/* AI 양식 자동 생성기 모달 */}
+      {showAiGenerator && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-transparent w-full max-w-2xl relative">
+            <button onClick={() => setShowAiGenerator(false)} className="absolute -top-10 right-0 text-white hover:text-gray-300">✕ 닫기</button>
+            <AiAutoGenerator onGenerated={(newFields) => { setFields([...fields, ...newFields]); setShowAiGenerator(false); }} />
+          </div>
+        </div>
+      )}
 
       {/* Deployment Preview Modal */}
       {showPreview && (
@@ -368,34 +399,34 @@ export default function FormBuilder() {
                 ✕
               </button>
             </div>
-            
+
             <div className="flex flex-1 overflow-hidden">
               <div className="w-64 border-r border-gray-200 p-6 flex flex-col space-y-4 bg-gray-50">
                 <h3 className="font-semibold text-gray-700">타겟 디바이스 선택</h3>
-                <button 
+                <button
                   onClick={() => setPreviewMode('mobile')}
                   className={`flex items-center space-x-3 p-3 rounded-lg border ${previewMode === 'mobile' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-gray-200 bg-white hover:bg-gray-100'}`}
                 >
                   <Smartphone className="w-5 h-5" />
                   <span className="font-medium">모바일 폰 주력</span>
                 </button>
-                <button 
+                <button
                   onClick={() => setPreviewMode('pc')}
                   className={`flex items-center space-x-3 p-3 rounded-lg border ${previewMode === 'pc' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-gray-200 bg-white hover:bg-gray-100'}`}
                 >
                   <Monitor className="w-5 h-5" />
                   <span className="font-medium">PC 화면 주력</span>
                 </button>
-                <button 
+                <button
                   onClick={() => setPreviewMode('hybrid')}
                   className={`flex items-center space-x-3 p-3 rounded-lg border ${previewMode === 'hybrid' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-gray-200 bg-white hover:bg-gray-100'}`}
                 >
                   <Globe className="w-5 h-5" />
                   <span className="font-medium">둘 다 대응 (반응형)</span>
                 </button>
-                
+
                 <div className="mt-auto pt-6">
-                  <button 
+                  <button
                     onClick={() => { setShowPreview(false); handleSave(); }}
                     className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold shadow-sm"
                   >
@@ -403,12 +434,12 @@ export default function FormBuilder() {
                   </button>
                 </div>
               </div>
-              
+
               <div className="flex-1 bg-gray-200 flex items-center justify-center p-8 overflow-y-auto">
                 {/* Simulated Device Frame */}
-                <div 
+                <div
                   className={`bg-white shadow-2xl overflow-y-auto transition-all duration-300 ${
-                    previewMode === 'mobile' ? 'w-[375px] h-[812px] rounded-[2.5rem] border-[8px] border-gray-900 p-6' : 
+                    previewMode === 'mobile' ? 'w-[375px] h-[812px] rounded-[2.5rem] border-[8px] border-gray-900 p-6' :
                     previewMode === 'pc' ? 'w-full max-w-4xl h-full rounded-lg border border-gray-300 p-10' :
                     'w-full max-w-2xl h-[90%] rounded-xl border border-gray-300 p-8'
                   }`}
@@ -438,6 +469,146 @@ export default function FormBuilder() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 우측 상세 옵션 패널 — 캔버스에서 다루지 않는 필드별 세부 설정을 모아 편집한다.
+// ---------------------------------------------------------------------------
+function FieldDetailPanel({
+  field,
+  onChange,
+  onClose,
+}: {
+  field: FormField;
+  onChange: (updates: Partial<FormField>) => void;
+  onClose: () => void;
+}) {
+  const fieldTypeInfo = FIELD_TYPES.find((t) => t.type === field.type);
+
+  const updateOption = (index: number, value: string) => {
+    const next = [...(field.options || [])];
+    next[index] = value;
+    onChange({ options: next });
+  };
+  const addOption = () => onChange({ options: [...(field.options || []), `옵션 ${(field.options?.length ?? 0) + 1}`] });
+  const removeOption = (index: number) => onChange({ options: (field.options || []).filter((_, i) => i !== index) });
+
+  return (
+    <div className="p-5 space-y-6">
+      <div className="flex items-center justify-between border-b pb-4">
+        <div className="flex items-center space-x-2">
+          {fieldTypeInfo?.icon}
+          <div>
+            <h3 className="font-bold text-gray-900 text-sm">{fieldTypeInfo?.label}</h3>
+            <p className="text-[10px] text-gray-400 font-mono">{field.type}</p>
+          </div>
+        </div>
+        <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">설명 (선택)</label>
+        <input
+          type="text"
+          value={field.description || ''}
+          onChange={(e) => onChange({ description: e.target.value })}
+          className="w-full p-2 border rounded text-sm"
+          placeholder="응답자에게 보여줄 부가 설명"
+        />
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">레이아웃 너비</label>
+        <div className="flex space-x-2">
+          <button onClick={() => onChange({ width: '100%' })} className={`flex-1 px-2 py-1.5 text-xs rounded border ${field.width === '100%' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'text-gray-600'}`}>100%</button>
+          <button onClick={() => onChange({ width: '50%' })} className={`flex-1 px-2 py-1.5 text-xs rounded border ${field.width === '50%' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'text-gray-600'}`}>50%</button>
+        </div>
+      </div>
+
+      {OPTIONS_TYPES.includes(field.type) && (
+        <div>
+          <label className="block text-xs font-semibold text-gray-500 uppercase mb-2">선택지 옵션</label>
+          <div className="space-y-2">
+            {(field.options || []).map((opt, idx) => (
+              <div key={idx} className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={opt}
+                  onChange={(e) => updateOption(idx, e.target.value)}
+                  className="flex-1 p-1.5 border rounded text-sm"
+                />
+                <button onClick={() => removeOption(idx)} className="p-1.5 text-gray-400 hover:text-red-600"><X className="w-3.5 h-3.5" /></button>
+              </div>
+            ))}
+          </div>
+          <button onClick={addOption} className="mt-2 w-full flex items-center justify-center py-1.5 border border-dashed rounded text-xs text-indigo-600 hover:bg-indigo-50">
+            <Plus className="w-3.5 h-3.5 mr-1" /> 옵션 추가
+          </button>
+        </div>
+      )}
+
+      {field.type === 'regex-input' && (
+        <div className="space-y-2 p-3 border border-blue-100 bg-blue-50 rounded">
+          <label className="text-sm font-medium text-gray-700 flex items-center space-x-2">
+            <Regex className="w-4 h-4 text-blue-600" />
+            <span>정규식(Regex) 검증 패턴</span>
+          </label>
+          <select
+            className="w-full p-2 border border-gray-300 rounded text-sm"
+            value={field.regexPattern || ''}
+            onChange={(e) => onChange({ regexPattern: e.target.value })}
+          >
+            <option value="">패턴 선택 (자유 입력)</option>
+            <option value="^01(?:0|1|[6-9])-(?:\d{3}|\d{4})-\d{4}$">휴대폰 번호 (010-XXXX-XXXX)</option>
+            <option value="^\d{2}[0-1]\d[0-3]\d-[1-4]\d{6}$">주민등록번호 (YYYYYY-XXXXXXX)</option>
+            <option value="^\d{3}-\d{2}-\d{5}$">사업자등록번호 (XXX-XX-XXXXX)</option>
+            <option value="^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$">이메일 주소</option>
+          </select>
+        </div>
+      )}
+
+      {field.type === 'map-address' && (
+        <div className="p-3 bg-green-50 border border-green-200 rounded text-sm text-green-800 flex items-start space-x-2">
+          <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <span>입력된 주소를 기반으로 지도 핀이 자동으로 표시되는 복합 컴포넌트입니다.</span>
+        </div>
+      )}
+
+      {field.type === 'api-select' && (
+        <div>
+          <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">외부 연동 API 엔드포인트</label>
+          <input
+            type="text"
+            value={field.apiEndpoint || ''}
+            onChange={(e) => onChange({ apiEndpoint: e.target.value })}
+            className="w-full p-2 border rounded text-sm font-mono"
+            placeholder="https://api.company.com/v1/employees"
+          />
+        </div>
+      )}
+
+      {field.type === 'popup-toggle' && (
+        <div>
+          <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">자동 닫힘 시간(초)</label>
+          <input
+            type="number"
+            min={1}
+            value={field.autoDismissSeconds ?? ''}
+            onChange={(e) => onChange({ autoDismissSeconds: e.target.value ? Number(e.target.value) : undefined })}
+            className="w-full p-2 border rounded text-sm"
+            placeholder="5"
+          />
+        </div>
+      )}
+
+      <div className="p-3 bg-gray-50 border border-gray-200 rounded">
+        <label className="flex items-center space-x-2 text-sm text-gray-700">
+          <input type="checkbox" checked={!!field.privacyMasking} onChange={(e) => onChange({ privacyMasking: e.target.checked })} />
+          <span>비식별화(마스킹) 처리 — 데이터 뷰어에서 이 항목을 마스킹해 표시</span>
+        </label>
+      </div>
     </div>
   );
 }

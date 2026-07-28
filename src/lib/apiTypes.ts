@@ -12,12 +12,40 @@ export interface FormListItem {
   description: string;
   fields: FormField[];
   status: 'OPEN' | 'CLOSED';
+  ownerId: string | null;
   ownerName: string | null;
   deployUrl: string | null;
+  startsAt: string | null;
+  expiresAt: string | null;
   viewCount: number;
   submissionCount: number;
   createdAt: string;
   updatedAt: string;
+  active: boolean;
+  // /api/forms?withAccess=1 에서만 채워짐 (데이터 허브 화면 전용).
+  dataAccess?: 'owner' | 'shared' | 'super-admin' | 'none';
+}
+
+export interface AdminUserItem {
+  id: string;
+  email: string;
+  name: string;
+  role: 'ADMIN' | 'SUPER_ADMIN';
+  orgName: string | null;
+  isActive: boolean;
+  canBulkExport: boolean;
+  createdAt: string;
+  _count: { formsOwned: number };
+}
+
+export interface NotificationItem {
+  id: string;
+  formId: string | null;
+  type: string;
+  message: string;
+  severity: 'info' | 'warning' | 'critical';
+  read: boolean;
+  createdAt: string;
 }
 
 export interface SubmissionItem {
@@ -46,6 +74,14 @@ export interface ShareRequestItem {
   fromUser: { id: string; name: string; email: string };
   toUser: { id: string; name: string; email: string };
   form: { id: string };
+}
+
+export interface MeInfo {
+  id: string;
+  email: string;
+  name: string;
+  role: 'ADMIN' | 'SUPER_ADMIN';
+  canBulkExport: boolean;
 }
 
 export interface DatabaseRightsInfo {

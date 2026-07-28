@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentAdmin, requireAdmin } from '@/lib/auth';
 import { checkRateLimit } from '@/lib/rateLimit';
-import { getForm } from '@/lib/services/formService';
+import { canAccessFormData, getForm } from '@/lib/services/formService';
 import { exportFormSubmissions } from '@/lib/services/submissionService';
 
 type Params = { params: Promise<{ formId: string }> };
@@ -13,7 +13,24 @@ export async function GET(request: NextRequest, { params }: Params) {
   const unauthorized = await requireAdmin();
   if (unauthorized) return unauthorized;
 
+  const { formId } = await params;
   const actor = await getCurrentAdmin();
+
+  if (!(await canAccessFormData(formId, actor))) {
+    return NextResponse.json(
+      { error: 'FORBIDDEN', message: '이 양식지의 제출 데이터를 조회할 권한이 없습니다.' },
+      { status: 403 }
+    );
+  }
+
+  // 슈퍼관리자가 개인정보 오남용을 우려해 개별 관리자의 대량 추출을 제한할 수 있다.
+  if (!actor.canBulkExport && actor.role !== 'SUPER_ADMIN') {
+    return NextResponse.json(
+      { error: 'EXPORT_RESTRICTED', message: '대량 추출 권한이 슈퍼관리자에 의해 제한되어 있습니다.' },
+      { status: 403 }
+    );
+  }
+
   // 목록 조회보다 훨씬 낮은 한도: 5분에 5회.
   const rate = checkRateLimit(`submissions:export:${actor.email}`, 5, 5 * 60_000);
   if (!rate.allowed) {
@@ -23,7 +40,6 @@ export async function GET(request: NextRequest, { params }: Params) {
     );
   }
 
-  const { formId } = await params;
   const form = await getForm(formId);
   if (!form) return NextResponse.json({ error: 'not found' }, { status: 404 });
 

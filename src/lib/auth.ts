@@ -64,3 +64,21 @@ export async function requireAdmin(): Promise<NextResponse | null> {
     { status: 401 }
   );
 }
+
+/**
+ * 슈퍼관리자 전용 API 보호. 쿠키가 아니라 DB에 저장된 실제 role을 기준으로 판단한다
+ * (다른 슈퍼관리자가 방금 승격/강등했을 수 있으므로 로그인 시점 쿠키를 신뢰하지 않는다).
+ */
+export async function requireSuperAdmin(): Promise<NextResponse | null> {
+  const unauthorized = await requireAdmin();
+  if (unauthorized) return unauthorized;
+
+  const actor = await getCurrentAdmin();
+  if (actor.role !== 'SUPER_ADMIN') {
+    return NextResponse.json(
+      { error: 'FORBIDDEN', message: '슈퍼관리자만 접근할 수 있습니다.' },
+      { status: 403 }
+    );
+  }
+  return null;
+}

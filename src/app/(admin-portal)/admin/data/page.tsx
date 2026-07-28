@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Database, Search, Filter, Calendar, FileText, Table } from 'lucide-react';
+import { Database, Search, Filter, Calendar, FileText, Table, Lock } from 'lucide-react';
 import Link from 'next/link';
 import type { FormListItem, SubmissionItem } from '@/lib/apiTypes';
 
@@ -13,7 +13,9 @@ export default function DataHubPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/forms').then((res) => res.json()),
+      // withAccess=1: 각 양식지별로 내가 제출 데이터를 조회할 권한이 있는지
+      // (owner/shared/super-admin/none)를 함께 받아온다.
+      fetch('/api/forms?withAccess=1').then((res) => res.json()),
       fetch('/api/submissions/recent?limit=10').then((res) => res.json()),
     ])
       .then(([formsJson, recentJson]) => {
@@ -106,7 +108,18 @@ export default function DataHubPage() {
                   )}
                 </div>
                 <h3 className="text-lg font-bold text-slate-900 mb-1">{form.title}</h3>
-                <p className="text-sm text-slate-500 font-mono mb-4">ID: {form.id}</p>
+                <p className="text-sm text-slate-500 font-mono mb-2">ID: {form.id}</p>
+                {form.dataAccess === 'owner' && (
+                  <span className="inline-block px-2 py-0.5 rounded text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 mb-2">내 양식</span>
+                )}
+                {form.dataAccess === 'shared' && (
+                  <span className="inline-block px-2 py-0.5 rounded text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 mb-2">공유받음 (조회 가능)</span>
+                )}
+                {form.dataAccess === 'none' && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-slate-100 text-slate-500 border border-slate-200 mb-2">
+                    <Lock className="w-3 h-3 mr-1" /> 조회 권한 없음
+                  </span>
+                )}
 
                 <div className="space-y-2 mt-4">
                   <div className="flex justify-between text-sm">
@@ -121,13 +134,20 @@ export default function DataHubPage() {
               </div>
 
               <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 mt-auto">
-                <Link
-                  href={`/admin/data/${form.id}`}
-                  className="w-full flex items-center justify-center py-2.5 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-300 transition-colors"
-                >
-                  <Table className="w-4 h-4 mr-2" />
-                  데이터 상세 조회하기
-                </Link>
+                {form.dataAccess === 'none' ? (
+                  <div className="w-full flex items-center justify-center py-2.5 bg-slate-100 text-slate-400 rounded-lg text-sm font-bold cursor-not-allowed" title="양식 소유자에게 공유를 요청하세요">
+                    <Lock className="w-4 h-4 mr-2" />
+                    조회 권한 없음
+                  </div>
+                ) : (
+                  <Link
+                    href={`/admin/data/${form.id}`}
+                    className="w-full flex items-center justify-center py-2.5 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-300 transition-colors"
+                  >
+                    <Table className="w-4 h-4 mr-2" />
+                    데이터 상세 조회하기
+                  </Link>
+                )}
               </div>
             </div>
           ))}

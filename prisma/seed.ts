@@ -61,15 +61,12 @@ async function ensureIndices() {
 // -----------------------------------------------------------------------
 // 1) 정형 데이터: 관리자 계정
 // -----------------------------------------------------------------------
+// 목업으로 만들어졌던 가짜 부서/담당자 계정(마케팅팀 김민수 등)은 모두 제거한다.
+// 실제 운영 관리자 계정은 로그인 시(getCurrentAdmin) 자동으로 생성되며, 새로 만드는
+// 양식지는 그 계정이 직접 소유하게 된다 — 지금 시드 시점에는 최고관리자 계정 하나만
+// 필요하다.
 const USERS = [
   { email: 'ralfkang@ktl.re.kr', name: '최고관리자', role: 'SUPER_ADMIN' as const },
-  { email: 'admin@company.com', name: '기본관리자', role: 'ADMIN' as const },
-  { email: 'marketing@company.com', name: '마케팅팀 김민수', role: 'ADMIN' as const },
-  { email: 'hr@company.com', name: '인사팀 이영희', role: 'ADMIN' as const },
-  { email: 'facilities@company.com', name: '총무팀 박지영', role: 'ADMIN' as const },
-  { email: 'it-support@company.com', name: 'IT지원팀 정대만', role: 'ADMIN' as const },
-  { email: 'qa@company.com', name: 'QA팀', role: 'ADMIN' as const },
-  { email: 'design@company.com', name: '디자인팀 박철수', role: 'ADMIN' as const },
 ];
 
 // -----------------------------------------------------------------------
@@ -88,7 +85,7 @@ const FORMS: Array<{
     id: 'f-101',
     title: '2024 하반기 고객 만족도 조사',
     description: '고객 피드백 수집용 양식',
-    ownerEmail: 'marketing@company.com',
+    ownerEmail: 'ralfkang@ktl.re.kr',
     status: 'OPEN',
     fields: [
       { id: 'f101-1', type: 'text', label: '고객명', required: true, nullable: false, width: '50%' },
@@ -107,7 +104,7 @@ const FORMS: Array<{
     id: 'f-102',
     title: '신규 입사자 온보딩 피드백',
     description: '사내 온보딩 세션 피드백',
-    ownerEmail: 'hr@company.com',
+    ownerEmail: 'ralfkang@ktl.re.kr',
     status: 'OPEN',
     fields: [
       { id: 'f102-1', type: 'text', label: '부서명', required: true, nullable: false, width: '50%' },
@@ -124,7 +121,7 @@ const FORMS: Array<{
     id: 'f-103',
     title: '2026년 하반기 워크샵 참가 신청서',
     description: '전사 워크샵 참석 여부 및 희망 활동 조사',
-    ownerEmail: 'facilities@company.com',
+    ownerEmail: 'ralfkang@ktl.re.kr',
     status: 'OPEN',
     fields: [
       { id: 'f103-1', type: 'text', label: '부서명', required: true, nullable: false, width: '50%' },
@@ -141,7 +138,7 @@ const FORMS: Array<{
     id: 'f-104',
     title: 'IT 장비 지급 요청서 (보안동의서 포함)',
     description: '노트북 및 모니터 신청',
-    ownerEmail: 'it-support@company.com',
+    ownerEmail: 'ralfkang@ktl.re.kr',
     status: 'CLOSED',
     fields: [
       { id: 'f104-1', type: 'text', label: '신청자 사번', required: true, nullable: false, width: '100%' },
@@ -156,7 +153,7 @@ const FORMS: Array<{
     id: 'f-999',
     title: '종합 컴포넌트 테스트 양식지 (f-999)',
     description: '모든 23종 컴포넌트가 포함된 대규모 테스트 폼입니다.',
-    ownerEmail: 'qa@company.com',
+    ownerEmail: 'ralfkang@ktl.re.kr',
     status: 'OPEN',
     fields: [
       { id: 'f999-1', type: 'text', label: '단답형 (이름)', required: true, nullable: false, width: '50%' },
@@ -202,10 +199,9 @@ const FORMS: Array<{
 // 3) 정형 데이터: 감사 로그 샘플
 // -----------------------------------------------------------------------
 const AUDIT_LOGS = [
-  { userEmail: 'admin@company.com', action: 'DATA_UPDATE', target: 'Form [f-101] Data [SUB-004]', details: '수동 재가공 (이상치 연락처 수정)', severity: 'warning' as const, formId: 'f-101' },
-  { userEmail: 'marketing@company.com', action: 'FORM_UPDATE', target: 'Form [f-101]', details: '필드 속성 변경 (필수값 추가)', severity: 'info' as const, formId: 'f-101' },
-  { userEmail: 'it-support@company.com', action: 'FORM_CREATE', target: 'Form [f-104]', details: '신규 양식지 생성', severity: 'info' as const, formId: 'f-104' },
-  { userEmail: 'hr@company.com', action: 'DATA_DELETE', target: 'Form [f-102] Data [SUB-111]', details: '제출 데이터 삭제', severity: 'critical' as const, formId: 'f-102' },
+  { userEmail: 'ralfkang@ktl.re.kr', action: 'DATA_UPDATE', target: 'Form [f-101] Data [SUB-004]', details: '수동 재가공 (이상치 연락처 수정)', severity: 'warning' as const, formId: 'f-101' },
+  { userEmail: 'ralfkang@ktl.re.kr', action: 'FORM_UPDATE', target: 'Form [f-101]', details: '필드 속성 변경 (필수값 추가)', severity: 'info' as const, formId: 'f-101' },
+  { userEmail: 'ralfkang@ktl.re.kr', action: 'FORM_CREATE', target: 'Form [f-104]', details: '신규 양식지 생성', severity: 'info' as const, formId: 'f-104' },
   { userEmail: 'ralfkang@ktl.re.kr', action: 'LOGIN_MFA', target: 'System', details: '최고 관리자 권한 에스컬레이션 로그인', severity: 'critical' as const },
 ];
 

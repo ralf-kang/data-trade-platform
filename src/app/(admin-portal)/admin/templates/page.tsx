@@ -1,17 +1,18 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Copy, Edit3, Trash2, CheckCircle2, Circle } from 'lucide-react';
-import type { FormListItem } from '@/lib/apiTypes';
+import { Copy, Edit3, Trash2, CheckCircle2, Circle, Users } from 'lucide-react';
+import type { FormListItem, ShareRequestItem } from '@/lib/apiTypes';
 
 export default function AdminTemplatesPage() {
   const [templates, setTemplates] = useState<FormListItem[]>([]);
+  const [grantedShares, setGrantedShares] = useState<ShareRequestItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   // 목록 재조회(복사 후 새로고침 등 이벤트 핸들러 전용) — 로딩 상태를 다시 true로 보여준다.
   const reloadTemplates = () => {
     setLoading(true);
-    fetch('/api/forms')
+    fetch('/api/forms?mine=1')
       .then((res) => res.json())
       .then((json) => setTemplates(json.forms ?? []))
       .finally(() => setLoading(false));
@@ -19,9 +20,17 @@ export default function AdminTemplatesPage() {
 
   useEffect(() => {
     // 최초 마운트 시 loading 초기값이 이미 true이므로 다시 설정할 필요가 없다.
-    fetch('/api/forms')
-      .then((res) => res.json())
-      .then((json) => setTemplates(json.forms ?? []))
+    Promise.all([
+      fetch('/api/forms?mine=1').then((res) => res.json()),
+      // "받은 요청(received)" = 내가 소유자로서 승인/대기 처리하는 요청 — 승인된 것은
+      // 곧 "내가 다른 관리자에게 부여한 제출 데이터 조회 권한"이다.
+      fetch('/api/share-requests').then((res) => (res.ok ? res.json() : { received: [] })),
+    ])
+      .then(([formsJson, shareJson]) => {
+        setTemplates(formsJson.forms ?? []);
+        const received: ShareRequestItem[] = shareJson.received ?? [];
+        setGrantedShares(received.filter((r) => r.status === 'APPROVED'));
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -92,7 +101,7 @@ export default function AdminTemplatesPage() {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">내 템플릿 관리</h1>
-            <p className="text-gray-500 mt-2">내가 작성한 양식을 관리하고 복사하여 새로운 양식을 만들 수 있습니다.</p>
+            <p className="text-gray-500 mt-2">내가 소유한 양식만 표시됩니다. 관리하고 복사하여 새로운 양식을 만들 수 있습니다.</p>
           </div>
           <a href="/admin/builder" className="bg-blue-600 text-white px-5 py-2.5 rounded-lg font-bold hover:bg-blue-700">
             + 새 양식 만들기 (빈 양식)
@@ -148,6 +157,29 @@ export default function AdminTemplatesPage() {
               ))}
             </tbody>
           </table>
+        </div>
+
+        {/* 내가 부여한 공유(제출 데이터 조회) 권한 — 요구사항: "다른 관리자에게 내가 준
+            권한은 내 양식지 관리 화면에서 조회 할 수 있어야 한다." */}
+        <div className="mt-8 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 flex items-center">
+            <Users className="w-5 h-5 mr-2 text-indigo-600" />
+            <h2 className="font-bold text-gray-900">내가 부여한 제출 데이터 조회 권한</h2>
+          </div>
+          {grantedShares.length === 0 ? (
+            <div className="px-6 py-6 text-center text-gray-400 text-sm">부여한 공유 권한이 없습니다.</div>
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {grantedShares.map((s) => (
+                <li key={s.id} className="px-6 py-3 flex items-center justify-between text-sm">
+                  <span className="text-gray-700">
+                    <strong className="text-gray-900">{s.fromUser.name}</strong>({s.fromUser.email}) 님에게 양식 <span className="font-mono text-indigo-600">{s.formId}</span> 조회 권한 부여
+                  </span>
+                  <span className="text-gray-400">{s.createdAt.slice(0, 10)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         {/* Partial Clone Modal */}

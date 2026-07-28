@@ -50,12 +50,17 @@ model AdminUser {
   password  String
   role      AdminRole @default(ADMIN)
   orgName   String?
+  // 계정 정지(제재) — 슈퍼관리자가 무단 개인정보 수집 등을 이유로 관리자 활동을 막을 때 false로.
   isActive  Boolean   @default(true)
+  // 대량 추출(CSV) 허용 여부 — 슈퍼관리자가 개인적 유용 등을 우려해 개별 관리자 단위로 제한할 수 있다.
+  // false이면 /submissions/export 요청이 거부된다 (src/lib/services/submissionService.ts).
+  canBulkExport Boolean @default(true)
   createdAt DateTime  @default(now())
 
-  formsOwned            FormRegistry[] @relation("FormOwner")
-  shareRequestsSent     ShareRequest[] @relation("ShareRequestFrom")
-  shareRequestsReceived ShareRequest[] @relation("ShareRequestTo")
+  formsOwned            FormRegistry[]       @relation("FormOwner")
+  shareRequestsSent     ShareRequest[]       @relation("ShareRequestFrom")
+  shareRequestsReceived ShareRequest[]       @relation("ShareRequestTo")
+  notifications         AdminNotification[]
 
   @@map("admin_users")
 }
@@ -66,7 +71,12 @@ model FormRegistry {
   status          FormStatus @default(OPEN)
   ownerId         String?
   owner           AdminUser? @relation("FormOwner", fields: [ownerId], references: [id])
+  // 운영 서버 기본 배포 URL — "/q/{id}" 고정값. 관리자 화면에서 수정/삭제할 수 없도록
+  // API 계층(formService)에서 보호하고, 별도 활성화 기간만 이 레코드로 제어한다.
   deployUrl       String?
+  // 양식지 활성화 기간(선택) — 설정 시 이 기간 밖에서는 공개 응답 페이지 접근이 거부된다.
+  startsAt        DateTime?
+  expiresAt       DateTime?
   viewCount       Int        @default(0)
   submissionCount Int        @default(0)
   createdAt       DateTime   @default(now())
@@ -74,6 +84,7 @@ model FormRegistry {
 
   shareRequests ShareRequest[]
   auditLogs     AuditLog[]
+  notifications AdminNotification[]
 
   @@map("form_registry")
 }
@@ -91,6 +102,36 @@ model AuditLog {
 
   @@index([formId])
   @@map("audit_logs")
+}
+
+// 관리자에게 보내는 인앱 알림 — 특히 제출 데이터 이상치 감지 시 양식 소유자에게 발송된다
+// (요구사항: "관리자는 관련 이상치 데이터에 대해서 보고/알림을 받을 수 있어야 함").
+model AdminNotification {
+  id        String        @id @default(cuid())
+  userId    String
+  user      AdminUser     @relation(fields: [userId], references: [id])
+  formId    String?
+  form      FormRegistry? @relation(fields: [formId], references: [id])
+  type      String // 'ANOMALY' | 'SHARE_REQUEST' | 'OWNERSHIP_CHANGE' 등
+  message   String
+  severity  AuditSeverity @default(info)
+  read      Boolean       @default(false)
+  createdAt DateTime      @default(now())
+
+  @@index([userId, read])
+  @@map("admin_notifications")
+}
+
+// 시스템 전역 설정(싱글턴) — 예: QR/URL 생성에 쓰이는 공개 기본 도메인.
+// 슈퍼관리자 시스템 환경 설정(/super-admin/settings) 화면에서만 수정 가능.
+model SystemConfig {
+  id            String   @id @default("default")
+  // QR 코드 / 배포 URL 안내에 사용할 운영 서버의 공개 기본 URL (예: https://forms.company.com).
+  // 미설정 시 요청 Origin으로 대체한다.
+  publicBaseUrl String?
+  updatedAt     DateTime @updatedAt
+
+  @@map("system_config")
 }
 
 model ShareRequest {

@@ -14,6 +14,7 @@ import {
   Settings,
   Database
 } from 'lucide-react';
+import { NotificationBell } from './NotificationBell';
 
 interface AdminSidebarProps {
   role?: 'admin' | 'super-admin';
@@ -84,10 +85,11 @@ export function AdminSidebar({ role = 'admin' }: AdminSidebarProps) {
         </div>
 
       </nav>
-      <div className="p-4 border-t border-slate-800">
+      <div className="p-4 border-t border-slate-800 flex items-center justify-between">
         <Link href="/legal/database-rights" className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
           데이터베이스제작자 권리 고지
         </Link>
+        <NotificationBell />
       </div>
     </div>
   );
