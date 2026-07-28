@@ -1,20 +1,27 @@
 'use client';
 
-import { useState } from 'react';
-import { Activity, Search, Filter, ShieldAlert, Edit2, FileText, Database } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Activity, Search, Filter, ShieldAlert, FileText, Database } from 'lucide-react';
 import Link from 'next/link';
-
-// Mock Audit Logs
-const MOCK_AUDIT_LOGS = [
-  { id: 'AL-1001', time: '2026-07-27 16:35:12', user: 'admin@company.com', action: 'DATA_UPDATE', target: 'Form [f-101] Data [SUB-004]', details: '수동 재가공 (이상치 연락처 수정)', severity: 'warning' },
-  { id: 'AL-1002', time: '2026-07-27 15:20:05', user: 'marketing@company.com', action: 'FORM_UPDATE', target: 'Form [f-101]', details: '필드 속성 변경 (필수값 추가)', severity: 'info' },
-  { id: 'AL-1003', time: '2026-07-27 14:10:44', user: 'admin@company.com', action: 'FORM_CREATE', target: 'Form [f-104]', details: '신규 양식지 생성', severity: 'info' },
-  { id: 'AL-1004', time: '2026-07-27 11:05:22', user: 'hr@company.com', action: 'DATA_DELETE', target: 'Form [f-102] Data [SUB-111]', details: '제출 데이터 삭제', severity: 'critical' },
-  { id: 'AL-1005', time: '2026-07-27 09:30:00', user: 'superadmin@company.com', action: 'LOGIN_MFA', target: 'System', details: '최고 관리자 권한 에스컬레이션 로그인', severity: 'critical' },
-];
+import type { AuditLogItem } from '@/lib/apiTypes';
 
 export default function AuditLogsPage() {
-  const [logs] = useState(MOCK_AUDIT_LOGS);
+  const [logs, setLogs] = useState<AuditLogItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    fetch('/api/audit-logs')
+      .then((res) => res.json())
+      .then((json) => setLogs(json.logs ?? []))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filteredLogs = logs.filter((log) => {
+    if (!searchTerm) return true;
+    const haystack = `${log.userEmail} ${log.action} ${log.target} ${log.details}`.toLowerCase();
+    return haystack.includes(searchTerm.toLowerCase());
+  });
 
   const getActionIcon = (action: string) => {
     if (action.includes('DATA')) return <Database className="w-4 h-4" />;
@@ -52,14 +59,20 @@ export default function AuditLogsPage() {
             <div className="flex space-x-2">
               <div className="relative">
                 <Search className="w-4 h-4 absolute left-3 top-2.5 text-gray-400" />
-                <input type="text" placeholder="로그 검색 (유저, 액션 등)" className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm w-64 focus:ring-2 focus:ring-indigo-600 outline-none bg-white" />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="로그 검색 (유저, 액션 등)"
+                  className="pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm w-64 focus:ring-2 focus:ring-indigo-600 outline-none bg-white"
+                />
               </div>
               <button className="flex items-center px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium transition-colors">
                 <Filter className="w-4 h-4 mr-2" /> 필터링 옵션
               </button>
             </div>
             <div className="text-sm text-gray-500">
-              최근 30일 간의 로그만 표시됩니다.
+              최근 {logs.length}건의 로그가 표시됩니다.
             </div>
           </div>
 
@@ -67,7 +80,6 @@ export default function AuditLogsPage() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-white">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-24">로그 ID</th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-48">발생 일시</th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">사용자 (계정)</th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">액션 종류</th>
@@ -76,11 +88,20 @@ export default function AuditLogsPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-100 text-sm">
-                {logs.map((log) => (
+                {loading && (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-8 text-center text-gray-400">불러오는 중...</td>
+                  </tr>
+                )}
+                {!loading && filteredLogs.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-8 text-center text-gray-400">기록된 로그가 없습니다.</td>
+                  </tr>
+                )}
+                {filteredLogs.map((log) => (
                   <tr key={log.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-500 font-mono text-xs">{log.id}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-500">{log.time}</td>
-                    <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">{log.user}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-500">{log.time.slice(0, 19).replace('T', ' ')}</td>
+                    <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">{log.userEmail}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${getSeverityStyle(log.severity)}`}>
                         <span className="mr-1.5">{getActionIcon(log.action)}</span>

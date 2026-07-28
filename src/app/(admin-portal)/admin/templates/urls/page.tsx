@@ -1,22 +1,23 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link as LinkIcon, QrCode, Power, Eye, Copy, ExternalLink, Settings2, BarChart2, Database, Key } from 'lucide-react';
 import Link from 'next/link';
-
-const MOCK_URLS = [
-  { id: 'f-101', title: '2024 하반기 고객 만족도 조사', url: 'http://localhost:3000/q/f-101', status: 'OPEN', views: 342, submissions: 4, lastUpdate: '2026-07-27 10:30' },
-  { id: 'f-102', title: '신규 입사자 온보딩 피드백', url: 'http://localhost:3000/q/f-102', status: 'OPEN', views: 125, submissions: 2, lastUpdate: '2026-07-20 15:45' },
-  { id: 'f-103', title: '2026년 하반기 워크샵 참가 신청서', url: 'http://localhost:3000/q/f-103', status: 'OPEN', views: 88, submissions: 2, lastUpdate: '2026-07-23 09:45' },
-  { id: 'f-104', title: 'IT 장비 지급 요청서 (보안동의서 포함)', url: 'http://localhost:3000/q/f-104', status: 'CLOSED', views: 50, submissions: 2, lastUpdate: '2026-07-10 18:00' },
-  { id: 'f-999', title: '종합 컴포넌트 테스트 양식지 (f-999)', url: 'http://localhost:3000/q/f-999', status: 'OPEN', views: 9210, submissions: 125, lastUpdate: '2026-07-27 17:30' },
-];
+import type { FormListItem } from '@/lib/apiTypes';
 
 export default function UrlManagerPage() {
-  const [urls, setUrls] = useState(MOCK_URLS);
+  const [urls, setUrls] = useState<FormListItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [qrModalUrl, setQrModalUrl] = useState<string | null>(null);
   const [apiModalFormId, setApiModalFormId] = useState<string | null>(null);
   const [generatedApis, setGeneratedApis] = useState<{ url: string, key: string }[]>([]);
+
+  useEffect(() => {
+    fetch('/api/forms')
+      .then((res) => res.json())
+      .then((json) => setUrls(json.forms ?? []))
+      .finally(() => setLoading(false));
+  }, []);
 
   // 렌더링 중 Math.random()을 직접 호출하지 않도록, 선택된 URL 기반의 결정적 패턴을 미리 계산
   const qrPattern = useMemo(() => {
@@ -31,8 +32,17 @@ export default function UrlManagerPage() {
     });
   }, [qrModalUrl]);
 
-  const toggleStatus = (id: string, currentStatus: string) => {
+  const toggleStatus = async (id: string, currentStatus: 'OPEN' | 'CLOSED') => {
     const newStatus = currentStatus === 'OPEN' ? 'CLOSED' : 'OPEN';
+    const res = await fetch(`/api/forms/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus }),
+    });
+    if (!res.ok) {
+      alert('상태 변경에 실패했습니다.');
+      return;
+    }
     setUrls(urls.map(u => u.id === id ? { ...u, status: newStatus } : u));
   };
 
@@ -80,21 +90,35 @@ export default function UrlManagerPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-slate-100">
-                {urls.map(item => (
+                {loading && (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-8 text-center text-slate-400">불러오는 중...</td>
+                  </tr>
+                )}
+                {!loading && urls.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-8 text-center text-slate-400">등록된 양식이 없습니다.</td>
+                  </tr>
+                )}
+                {urls.map(item => {
+                  const fullUrl = typeof window !== 'undefined'
+                    ? `${window.location.origin}${item.deployUrl ?? `/q/${item.id}`}`
+                    : (item.deployUrl ?? `/q/${item.id}`);
+                  return (
                   <tr key={item.id} className={`transition-colors ${item.status === 'CLOSED' ? 'bg-slate-50/50 opacity-75' : 'hover:bg-indigo-50/30'}`}>
-                    
+
                     <td className="px-6 py-4">
                       <div className="font-bold text-slate-900 mb-1">{item.title}</div>
-                      <div className="text-xs text-slate-400">ID: {item.id} | 최종 수정: {item.lastUpdate}</div>
+                      <div className="text-xs text-slate-400">ID: {item.id} | 최종 수정: {item.updatedAt.slice(0, 16).replace('T', ' ')}</div>
                     </td>
 
                     <td className="px-6 py-4">
                       <div className="flex items-center space-x-2">
-                        <span className="text-sm text-indigo-600 underline font-mono truncate max-w-[200px]">{item.url}</span>
-                        <button onClick={() => handleCopy(item.url)} className="text-slate-400 hover:text-indigo-600" title="URL 복사">
+                        <span className="text-sm text-indigo-600 underline font-mono truncate max-w-[200px]">{fullUrl}</span>
+                        <button onClick={() => handleCopy(fullUrl)} className="text-slate-400 hover:text-indigo-600" title="URL 복사">
                           <Copy className="w-4 h-4" />
                         </button>
-                        <a href={item.url} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-indigo-600" title="새 탭에서 열기">
+                        <a href={fullUrl} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-indigo-600" title="새 탭에서 열기">
                           <ExternalLink className="w-4 h-4" />
                         </a>
                       </div>
@@ -103,10 +127,10 @@ export default function UrlManagerPage() {
                     <td className="px-6 py-4">
                       <div className="flex flex-col text-sm">
                         <span className="text-slate-600 flex items-center mb-1">
-                          <Eye className="w-4 h-4 mr-1.5 text-slate-400" /> 조회: {item.views.toLocaleString()}
+                          <Eye className="w-4 h-4 mr-1.5 text-slate-400" /> 조회: {item.viewCount.toLocaleString()}
                         </span>
                         <span className="text-slate-900 font-bold flex items-center">
-                          <BarChart2 className="w-4 h-4 mr-1.5 text-indigo-500" /> 제출: {item.submissions.toLocaleString()}
+                          <BarChart2 className="w-4 h-4 mr-1.5 text-indigo-500" /> 제출: {item.submissionCount.toLocaleString()}
                         </span>
                       </div>
                     </td>
@@ -134,8 +158,8 @@ export default function UrlManagerPage() {
                       >
                         <Database className="w-4 h-4" />
                       </button>
-                      <button 
-                        onClick={() => setQrModalUrl(item.url)}
+                      <button
+                        onClick={() => setQrModalUrl(fullUrl)}
                         className="p-2 text-slate-500 hover:text-indigo-600 bg-white border border-slate-200 rounded shadow-sm transition-colors"
                         title="QR 코드 생성"
                       >
@@ -157,7 +181,8 @@ export default function UrlManagerPage() {
                     </td>
 
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -3,41 +3,42 @@
 import { useState, useEffect } from 'react';
 import { Share2, Check, X, Clock, FileText, User } from 'lucide-react';
 import Link from 'next/link';
-
-interface ShareRequest {
-  id: string;
-  from?: string;
-  to?: string;
-  targetForm: string;
-  date: string;
-  status: string;
-}
-
-const MOCK_REQUESTS_RECEIVED: ShareRequest[] = [
-  { id: 'req-1', from: '마케팅팀 이영희', targetForm: '2024 하반기 고객 만족도 조사 (f-101)', date: '2026-07-27 14:20', status: 'PENDING' },
-  { id: 'req-2', from: '디자인팀 박철수', targetForm: '2024 하반기 고객 만족도 조사 (f-101)', date: '2026-07-26 09:15', status: 'APPROVED' },
-];
-
-const MOCK_REQUESTS_SENT: ShareRequest[] = [
-  { id: 'req-3', to: '인사팀 김민수', targetForm: '신규 입사자 온보딩 피드백 (f-102)', date: '2026-07-27 16:05', status: 'PENDING' },
-];
+import type { FormListItem, ShareRequestItem } from '@/lib/apiTypes';
 
 export default function ShareRequestsPage() {
-  const [received, setReceived] = useState(MOCK_REQUESTS_RECEIVED);
-  const [sent, setSent] = useState(MOCK_REQUESTS_SENT);
+  const [received, setReceived] = useState<ShareRequestItem[]>([]);
+  const [sent, setSent] = useState<ShareRequestItem[]>([]);
+  const [formTitleById, setFormTitleById] = useState<Map<string, string>>(new Map());
   const [activeTab, setActiveTab] = useState<'RECEIVED' | 'SENT'>('RECEIVED');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const localRequests = JSON.parse(localStorage.getItem('shareRequests') || '[]');
-    if (localRequests.length > 0) {
-      setSent(prev => [...prev, ...localRequests]);
-    }
+    // 최초 마운트 시 loading 초기값이 이미 true이므로 다시 설정할 필요가 없다.
+    Promise.all([
+      fetch('/api/share-requests').then((res) => (res.ok ? res.json() : { received: [], sent: [] })),
+      fetch('/api/forms').then((res) => res.json()),
+    ])
+      .then(([shareJson, formsJson]) => {
+        setReceived(shareJson.received ?? []);
+        setSent(shareJson.sent ?? []);
+        const forms: FormListItem[] = formsJson.forms ?? [];
+        setFormTitleById(new Map(forms.map((f) => [f.id, f.title])));
+      })
+      .finally(() => setLoading(false));
   }, []);
 
-  const handleAction = (id: string, action: 'APPROVED' | 'REJECTED') => {
-    if (confirm(`이 공유 요청을 ${action === 'APPROVED' ? '승인' : '거절'}하시겠습니까?\n승인 시 상대방은 이 양식의 사본을 가지게 됩니다.`)) {
-      setReceived(received.map(r => r.id === id ? { ...r, status: action } : r));
+  const handleAction = async (id: string, action: 'APPROVED' | 'REJECTED') => {
+    if (!confirm(`이 공유 요청을 ${action === 'APPROVED' ? '승인' : '거절'}하시겠습니까?\n승인 시 상대방은 이 양식의 사본을 가지게 됩니다.`)) return;
+    const res = await fetch(`/api/share-requests/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: action }),
+    });
+    if (!res.ok) {
+      alert('처리에 실패했습니다.');
+      return;
     }
+    setReceived((prev) => prev.map((r) => (r.id === id ? { ...r, status: action } : r)));
   };
 
   const getStatusBadge = (status: string) => {
@@ -48,10 +49,12 @@ export default function ShareRequestsPage() {
     }
   };
 
+  const list = activeTab === 'RECEIVED' ? received : sent;
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col p-8">
       <div className="max-w-5xl mx-auto w-full">
-        
+
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 flex items-center">
@@ -68,14 +71,14 @@ export default function ShareRequestsPage() {
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           {/* Tabs */}
           <div className="flex border-b border-gray-200">
-            <button 
+            <button
               onClick={() => setActiveTab('RECEIVED')}
               className={`flex-1 py-4 text-sm font-bold text-center border-b-2 transition-colors ${activeTab === 'RECEIVED' ? 'border-indigo-600 text-indigo-600 bg-indigo-50/30' : 'border-transparent text-gray-500 hover:bg-gray-50'}`}
             >
               내가 받은 요청 (Received)
               <span className="ml-2 bg-rose-500 text-white px-2 py-0.5 rounded-full text-xs">{received.filter(r => r.status === 'PENDING').length}</span>
             </button>
-            <button 
+            <button
               onClick={() => setActiveTab('SENT')}
               className={`flex-1 py-4 text-sm font-bold text-center border-b-2 transition-colors ${activeTab === 'SENT' ? 'border-indigo-600 text-indigo-600 bg-indigo-50/30' : 'border-transparent text-gray-500 hover:bg-gray-50'}`}
             >
@@ -86,39 +89,40 @@ export default function ShareRequestsPage() {
           {/* List */}
           <div className="p-0">
             <ul className="divide-y divide-gray-100">
-              {(activeTab === 'RECEIVED' ? received : sent).map(req => (
+              {loading && <div className="p-12 text-center text-gray-400">불러오는 중...</div>}
+              {!loading && list.map(req => (
                 <li key={req.id} className="p-6 hover:bg-slate-50 transition-colors">
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
                       <div className="flex items-center space-x-3 mb-2">
                         {getStatusBadge(req.status)}
-                        <span className="text-xs text-gray-400">{req.date}</span>
+                        <span className="text-xs text-gray-400">{req.createdAt.slice(0, 16).replace('T', ' ')}</span>
                       </div>
                       <div className="flex flex-col md:flex-row md:items-center text-sm">
                         <div className="flex items-center text-gray-900 font-bold mb-2 md:mb-0 md:mr-6">
                           <FileText className="w-4 h-4 mr-2 text-indigo-500" />
-                          {req.targetForm}
+                          {formTitleById.get(req.formId) ?? req.formId} ({req.formId})
                         </div>
                         <div className="flex items-center text-gray-600">
                           <User className="w-4 h-4 mr-2 text-gray-400" />
                           {activeTab === 'RECEIVED' ? (
-                            <span><strong className="text-gray-900">{req.from}</strong> 님이 복사를 요청했습니다.</span>
+                            <span><strong className="text-gray-900">{req.fromUser.name}</strong> 님이 복사를 요청했습니다.</span>
                           ) : (
-                            <span><strong className="text-gray-900">{req.to}</strong> 님에게 복사를 요청했습니다.</span>
+                            <span><strong className="text-gray-900">{req.toUser.name}</strong> 님에게 복사를 요청했습니다.</span>
                           )}
                         </div>
                       </div>
                     </div>
-                    
+
                     {activeTab === 'RECEIVED' && req.status === 'PENDING' && (
                       <div className="flex space-x-2 ml-4">
-                        <button 
+                        <button
                           onClick={() => handleAction(req.id, 'APPROVED')}
                           className="flex items-center px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-bold shadow-sm"
                         >
                           <Check className="w-4 h-4 mr-1" /> 승인
                         </button>
-                        <button 
+                        <button
                           onClick={() => handleAction(req.id, 'REJECTED')}
                           className="flex items-center px-4 py-2 bg-white border border-gray-300 text-rose-600 rounded-lg hover:bg-rose-50 text-sm font-bold shadow-sm"
                         >
@@ -129,8 +133,8 @@ export default function ShareRequestsPage() {
                   </div>
                 </li>
               ))}
-              
-              {(activeTab === 'RECEIVED' ? received : sent).length === 0 && (
+
+              {!loading && list.length === 0 && (
                 <div className="p-12 text-center text-gray-500">
                   표시할 요청 건이 없습니다.
                 </div>

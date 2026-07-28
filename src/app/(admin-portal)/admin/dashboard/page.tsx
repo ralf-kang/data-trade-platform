@@ -1,28 +1,46 @@
 'use client';
 
-import { useState } from 'react';
-import { LayoutDashboard, Users, FileText, ArrowUpRight, TrendingUp, Copy, Shield, FileSpreadsheet } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Users, FileText, ArrowUpRight, TrendingUp, Copy, FileSpreadsheet } from 'lucide-react';
 import Link from 'next/link';
+import type { FormListItem } from '@/lib/apiTypes';
 
 export default function AdminDashboardPage() {
-  const [popularForms] = useState([
-    { id: 'f-101', title: '2024 하반기 고객 만족도 조사', owner: '마케팅팀 김민수', submissions: 4, growth: '+12%' },
-    { id: 'f-102', title: '신규 입사자 온보딩 피드백', owner: '인사팀 이영희', submissions: 2, growth: '+5%' },
-    { id: 'f-103', title: '2026년 하반기 워크샵 참가 신청서', owner: '총무팀 박지영', submissions: 2, growth: '+8%' },
-    { id: 'f-104', title: 'IT 장비 지급 요청서 (보안동의서 포함)', owner: 'IT지원팀 정대만', submissions: 2, growth: '-1%' },
-  ]);
+  const [forms, setForms] = useState<FormListItem[]>([]);
+  const [pendingShareCount, setPendingShareCount] = useState(0);
+  const [loading, setLoading] = useState(true);
 
-  const handleRequestShare = (form: typeof popularForms[0]) => {
-    const existing = JSON.parse(localStorage.getItem('shareRequests') || '[]');
-    const newRequest = {
-      id: `req-${Date.now()}`,
-      to: form.owner,
-      targetForm: `${form.title} (${form.id})`,
-      date: new Date().toLocaleString('ko-KR', { hour12: false }).slice(0, 16),
-      status: 'PENDING',
-      type: 'SENT'
-    };
-    localStorage.setItem('shareRequests', JSON.stringify([...existing, newRequest]));
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/forms').then((res) => res.json()),
+      fetch('/api/share-requests').then((res) => (res.ok ? res.json() : { received: [] })),
+    ])
+      .then(([formsJson, shareJson]) => {
+        setForms(formsJson.forms ?? []);
+        const received: { status: string }[] = shareJson.received ?? [];
+        setPendingShareCount(received.filter((r) => r.status === 'PENDING').length);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const popularForms = [...forms].sort((a, b) => b.submissionCount - a.submissionCount).slice(0, 5);
+  const totalSubmissions = forms.reduce((sum, f) => sum + f.submissionCount, 0);
+
+  const handleRequestShare = async (form: FormListItem) => {
+    const res = await fetch('/api/share-requests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ formId: form.id }),
+    });
+    if (!res.ok) {
+      const { error } = await res.json().catch(() => ({ error: null }));
+      alert(
+        error === 'CANNOT_REQUEST_OWN_FORM'
+          ? '내가 소유한 양식에는 공유를 요청할 수 없습니다.'
+          : '공유 요청에 실패했습니다.'
+      );
+      return;
+    }
     alert(`[${form.title}] 양식의 원작자에게 공유(복사) 권한을 요청했습니다.\n"공유 신청 및 승인함" 메뉴에서 확인하실 수 있습니다.`);
   };
 
@@ -46,7 +64,7 @@ export default function AdminDashboardPage() {
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-500 mb-1">운영 중인 양식</p>
-                <h3 className="text-2xl font-bold text-gray-900">12개</h3>
+                <h3 className="text-2xl font-bold text-gray-900">{loading ? '-' : `${forms.length}개`}</h3>
               </div>
             </div>
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center">
@@ -55,7 +73,7 @@ export default function AdminDashboardPage() {
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-500 mb-1">누적 수집 데이터</p>
-                <h3 className="text-2xl font-bold text-gray-900">8,430건</h3>
+                <h3 className="text-2xl font-bold text-gray-900">{loading ? '-' : `${totalSubmissions.toLocaleString()}건`}</h3>
               </div>
             </div>
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center">
@@ -64,7 +82,7 @@ export default function AdminDashboardPage() {
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-500 mb-1">나의 공유 승인 대기</p>
-                <h3 className="text-2xl font-bold text-gray-900">3건</h3>
+                <h3 className="text-2xl font-bold text-gray-900">{loading ? '-' : `${pendingShareCount}건`}</h3>
               </div>
             </div>
           </div>
@@ -81,6 +99,10 @@ export default function AdminDashboardPage() {
               </div>
             </div>
             <div className="divide-y divide-gray-100">
+              {loading && <div className="p-8 text-center text-gray-400">불러오는 중...</div>}
+              {!loading && popularForms.length === 0 && (
+                <div className="p-8 text-center text-gray-400">등록된 양식이 없습니다.</div>
+              )}
               {popularForms.map((form, idx) => (
                 <div key={form.id} className="p-6 flex flex-col md:flex-row md:items-center justify-between hover:bg-slate-50 transition-colors">
                   <div className="flex items-center mb-4 md:mb-0">
@@ -89,18 +111,16 @@ export default function AdminDashboardPage() {
                     </div>
                     <div>
                       <h3 className="text-base font-bold text-gray-900">{form.title}</h3>
-                      <p className="text-sm text-gray-500 mt-0.5">원작자: {form.owner}</p>
+                      <p className="text-sm text-gray-500 mt-0.5">원작자: {form.ownerName ?? '알 수 없음'}</p>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center space-x-6">
                     <div className="text-right">
-                      <div className="text-sm font-medium text-gray-900">{form.submissions.toLocaleString()}건 제출</div>
-                      <div className={`text-xs font-medium mt-1 ${form.growth.startsWith('+') ? 'text-emerald-600' : 'text-rose-600'}`}>
-                        전주 대비 {form.growth}
-                      </div>
+                      <div className="text-sm font-medium text-gray-900">{form.submissionCount.toLocaleString()}건 제출</div>
+                      <div className="text-xs font-medium mt-1 text-gray-400">조회 {form.viewCount.toLocaleString()}회</div>
                     </div>
-                    <button 
+                    <button
                       onClick={() => handleRequestShare(form)}
                       className="px-4 py-2 flex items-center text-sm font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors border border-indigo-200"
                     >
@@ -112,9 +132,9 @@ export default function AdminDashboardPage() {
               ))}
             </div>
             <div className="p-4 border-t border-gray-100 bg-gray-50 text-center">
-              <button className="text-sm font-medium text-gray-600 hover:text-indigo-600 flex items-center justify-center w-full">
+              <Link href="/admin/templates" className="text-sm font-medium text-gray-600 hover:text-indigo-600 flex items-center justify-center w-full">
                 더 많은 사내 템플릿 보기 <ArrowUpRight className="w-4 h-4 ml-1" />
-              </button>
+              </Link>
             </div>
           </div>
         </div>
@@ -122,5 +142,3 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
-
-// No globe import needed here now

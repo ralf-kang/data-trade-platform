@@ -1,79 +1,38 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Copy, Edit3, Trash2, CheckCircle2, Circle } from 'lucide-react';
-import { FormTemplate, FormField } from '@/components/builder/types';
+import type { FormListItem } from '@/lib/apiTypes';
 
 export default function AdminTemplatesPage() {
-  // Mock Templates
-  const [templates, setTemplates] = useState<FormTemplate[]>([
-    {
-      id: 'f-101',
-      title: '2024 하반기 고객 만족도 조사',
-      description: '고객 피드백 수집용 양식',
-      fields: [
-        { id: 'f101-1', type: 'text', label: '고객명', required: true, width: '50%' },
-        { id: 'f101-2', type: 'regex-input', label: '연락처', required: true, regexPattern: '^01(?:0|1|[6-9])-(?:\\d{3}|\\d{4})-\\d{4}$', width: '50%' },
-        { id: 'f101-3', type: 'text', label: '이용 중인 서비스', required: true },
-        { id: 'f101-4', type: 'text', label: '개선 사항 (선택)', required: false },
-      ],
-      createdAt: '2026-07-27 10:30',
-      updatedAt: '2026-07-27 15:20',
-    },
-    {
-      id: 'f-102',
-      title: '신규 입사자 온보딩 피드백',
-      description: '사내 온보딩 세션 피드백',
-      fields: [
-        { id: 'f102-1', type: 'text', label: '부서명', required: true, width: '50%' },
-        { id: 'f102-2', type: 'text', label: '입사자 성함', required: true, width: '50%' },
-        { id: 'f102-3', type: 'text', label: '가장 유용했던 세션', required: true },
-        { id: 'f102-4', type: 'map-address', label: '근무 희망지 (옵션)', required: false },
-      ],
-      createdAt: '2026-07-19 09:00',
-      updatedAt: '2026-07-20 09:30',
-    },
-    {
-      id: 'f-103',
-      title: '2026년 하반기 워크샵 참가 신청서',
-      description: '전사 워크샵 참석 여부 및 희망 활동 조사',
-      fields: [
-        { id: 'f103-1', type: 'text', label: '부서명', required: true, width: '50%' },
-        { id: 'f103-2', type: 'text', label: '성명', required: true, width: '50%' },
-        { id: 'f103-3', type: 'radio', label: '참석 여부', required: true, options: ['참석', '불참'] },
-        { id: 'f103-4', type: 'checkbox', label: '희망 액티비티 (선택)', required: false, options: ['등산', '볼링', '방탈출', '보드게임'] },
-      ],
-      createdAt: '2026-07-21 10:00',
-      updatedAt: '2026-07-23 09:45',
-    },
-    {
-      id: 'f-104',
-      title: 'IT 장비 지급 요청서 (보안동의서 포함)',
-      description: '노트북 및 모니터 신청',
-      fields: [
-        { id: 'f104-1', type: 'text', label: '신청자 사번', required: true },
-        { id: 'f104-2', type: 'text', label: '요청 장비 (노트북/모니터 등)', required: true },
-      ],
-      createdAt: '2026-07-09 11:00',
-      updatedAt: '2026-07-11 10:15',
-    },
-    {
-      id: 'f-999',
-      title: '종합 컴포넌트 테스트 양식지 (f-999)',
-      description: '모든 23종 컴포넌트가 포함된 대규모 테스트 폼입니다.',
-      fields: [],
-      createdAt: '2026-07-27 17:30',
-      updatedAt: '2026-07-27 17:30',
-    }
-  ]);
+  const [templates, setTemplates] = useState<FormListItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // 목록 재조회(복사 후 새로고침 등 이벤트 핸들러 전용) — 로딩 상태를 다시 true로 보여준다.
+  const reloadTemplates = () => {
+    setLoading(true);
+    fetch('/api/forms')
+      .then((res) => res.json())
+      .then((json) => setTemplates(json.forms ?? []))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    // 최초 마운트 시 loading 초기값이 이미 true이므로 다시 설정할 필요가 없다.
+    fetch('/api/forms')
+      .then((res) => res.json())
+      .then((json) => setTemplates(json.forms ?? []))
+      .finally(() => setLoading(false));
+  }, []);
 
   const [showCloneModal, setShowCloneModal] = useState(false);
-  const [selectedTemplateForClone, setSelectedTemplateForClone] = useState<FormTemplate | null>(null);
+  const [selectedTemplateForClone, setSelectedTemplateForClone] = useState<FormListItem | null>(null);
   const [selectedFieldsToClone, setSelectedFieldsToClone] = useState<Set<string>>(new Set());
+  const [cloning, setCloning] = useState(false);
 
-  const openCloneModal = (template: FormTemplate) => {
+  const openCloneModal = (template: FormListItem) => {
     setSelectedTemplateForClone(template);
-    setSelectedFieldsToClone(new Set(template.fields?.map(f => f.id) || [])); // Default: select all
+    setSelectedFieldsToClone(new Set(template.fields?.map((f) => f.id) || [])); // Default: select all
     setShowCloneModal(true);
   };
 
@@ -87,33 +46,44 @@ export default function AdminTemplatesPage() {
     setSelectedFieldsToClone(newSet);
   };
 
-  const handleCloneSubmit = () => {
+  const handleCloneSubmit = async () => {
     if (!selectedTemplateForClone) return;
-    
-    // Partial Clone Logic
-    const fieldsToCopy = selectedTemplateForClone.fields?.filter(f => selectedFieldsToClone.has(f.id)).map(f => ({
-      ...f,
-      id: crypto.randomUUID() // new IDs for cloned fields
-    })) || [];
+    setCloning(true);
+    try {
+      // Partial Clone Logic — 선택된 필드만 새 id로 복사
+      const fieldsToCopy =
+        selectedTemplateForClone.fields
+          ?.filter((f) => selectedFieldsToClone.has(f.id))
+          .map((f) => ({ ...f, id: crypto.randomUUID() })) || [];
 
-    const now = new Date().toLocaleString('ko-KR', { hour12: false }).slice(0, 16).replace('.', '-');
-    const newTemplate: FormTemplate = {
-      id: `tpl-${Date.now()}`,
-      title: `${selectedTemplateForClone.title} (복사본)`,
-      description: selectedTemplateForClone.description,
-      fields: fieldsToCopy,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    setTemplates([newTemplate, ...templates]);
-    setShowCloneModal(false);
+      const res = await fetch('/api/forms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: `${selectedTemplateForClone.title} (복사본)`,
+          description: selectedTemplateForClone.description,
+          fields: fieldsToCopy,
+        }),
+      });
+      if (!res.ok) {
+        alert('복사에 실패했습니다.');
+        return;
+      }
+      setShowCloneModal(false);
+      reloadTemplates();
+    } finally {
+      setCloning(false);
+    }
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('정말로 이 양식을 삭제하시겠습니까?')) {
-      setTemplates(templates.filter(t => t.id !== id));
+  const handleDelete = async (id: string) => {
+    if (!confirm('정말로 이 양식을 삭제하시겠습니까?')) return;
+    const res = await fetch(`/api/forms/${id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      alert('삭제에 실패했습니다.');
+      return;
     }
+    setTemplates((prev) => prev.filter((t) => t.id !== id));
   };
 
   return (
@@ -140,6 +110,16 @@ export default function AdminTemplatesPage() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
+              {loading && (
+                <tr>
+                  <td colSpan={4} className="px-6 py-8 text-center text-gray-400">불러오는 중...</td>
+                </tr>
+              )}
+              {!loading && templates.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-6 py-8 text-center text-gray-400">등록된 양식이 없습니다.</td>
+                </tr>
+              )}
               {templates.map((template) => (
                 <tr key={template.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -149,7 +129,7 @@ export default function AdminTemplatesPage() {
                     {template.fields?.length || 0}개
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-gray-500">
-                    {template.createdAt}
+                    {template.createdAt.slice(0, 16).replace('T', ' ')}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right font-medium">
                     <div className="flex justify-end space-x-3">
@@ -178,7 +158,7 @@ export default function AdminTemplatesPage() {
                 <h2 className="text-xl font-bold text-gray-900">양식 복사 (Partial Clone)</h2>
                 <p className="text-sm text-gray-500 mt-1">원본 양식 전체를 복사하거나, 필요한 특정 필드만 골라서 복사할 수 있습니다.</p>
               </div>
-              
+
               <div className="p-6 flex-1 overflow-y-auto bg-gray-50">
                 <div className="mb-4">
                   <span className="font-semibold text-gray-700">원본 템플릿: </span>
@@ -188,7 +168,7 @@ export default function AdminTemplatesPage() {
                 <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
                   <div className="p-3 bg-gray-100 border-b border-gray-200 flex justify-between items-center">
                     <span className="font-medium text-gray-700 text-sm">복사할 필드 선택</span>
-                    <button 
+                    <button
                       onClick={() => {
                         const allFieldIds = selectedTemplateForClone.fields?.map(f => f.id) || [];
                         setSelectedFieldsToClone(selectedFieldsToClone.size === allFieldIds.length ? new Set() : new Set(allFieldIds));
@@ -202,8 +182,8 @@ export default function AdminTemplatesPage() {
                     {selectedTemplateForClone.fields?.map((field) => {
                       const isSelected = selectedFieldsToClone.has(field.id);
                       return (
-                        <div 
-                          key={field.id} 
+                        <div
+                          key={field.id}
                           onClick={() => toggleFieldClone(field.id)}
                           className={`p-3 flex items-center space-x-3 cursor-pointer hover:bg-indigo-50 transition-colors ${isSelected ? 'bg-indigo-50/50' : ''}`}
                         >
@@ -224,18 +204,18 @@ export default function AdminTemplatesPage() {
               </div>
 
               <div className="p-6 border-t border-gray-200 flex justify-end space-x-3 bg-white">
-                <button 
+                <button
                   onClick={() => setShowCloneModal(false)}
                   className="px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-50 font-medium"
                 >
                   취소
                 </button>
-                <button 
+                <button
                   onClick={handleCloneSubmit}
-                  disabled={selectedFieldsToClone.size === 0}
+                  disabled={selectedFieldsToClone.size === 0 || cloning}
                   className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-bold disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  선택한 {selectedFieldsToClone.size}개 필드로 복사본 생성
+                  {cloning ? '복사 중...' : `선택한 ${selectedFieldsToClone.size}개 필드로 복사본 생성`}
                 </button>
               </div>
             </div>

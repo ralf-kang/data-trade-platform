@@ -28,6 +28,7 @@ export default function LoginPage() {
     } else {
       // 일반 관리자 로그인 처리
       document.cookie = "adminRole=admin; path=/";
+      document.cookie = `adminEmail=${encodeURIComponent(email)}; path=/`;
       router.push('/admin/dashboard');
     }
   };
@@ -39,6 +40,7 @@ export default function LoginPage() {
       return;
     }
     document.cookie = "adminRole=super-admin; path=/";
+    document.cookie = `adminEmail=${encodeURIComponent(email)}; path=/`;
     router.push('/super-admin');
   };
 

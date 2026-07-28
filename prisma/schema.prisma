@@ -1,0 +1,109 @@
+// 정형(구조화) 데이터 스키마 — PostgreSQL
+//
+// 이 스키마는 "고정된 구조로 다루기 쉬운" 데이터만 담당한다:
+//   - 관리자 계정, 권한
+//   - 폼의 운영/배포 메타데이터(상태, 소유자, 조회/제출 카운터)
+//   - 감사 로그, 양식 공유 워크플로우
+//
+// 반대로 "양식마다 필드 구성이 바뀌고, 필드 구성에 따라 제출 데이터의 컬럼 수/타입이
+// 계속 확장되는" 비정형 데이터(폼 필드 정의, 제출 데이터 본문)는 Elasticsearch가 담당한다.
+// 매핑/색인 로직은 src/lib/elasticsearch.ts 참고.
+//
+// FormRegistry.id 는 Elasticsearch의 webreport-form-templates 문서 id(예: "f-101")와
+// 동일한 값을 공유하는 비즈니스 키로, 두 저장소를 이어주는 조인 포인트다.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AdminRole {
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum FormStatus {
+  OPEN
+  CLOSED
+}
+
+enum ShareRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AuditSeverity {
+  info
+  warning
+  critical
+}
+
+model AdminUser {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  name      String
+  password  String
+  role      AdminRole @default(ADMIN)
+  orgName   String?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+
+  formsOwned            FormRegistry[] @relation("FormOwner")
+  shareRequestsSent     ShareRequest[] @relation("ShareRequestFrom")
+  shareRequestsReceived ShareRequest[] @relation("ShareRequestTo")
+
+  @@map("admin_users")
+}
+
+// 폼의 "운영" 측면(정형) — 실제 제목/설명/필드 구성(비정형)은 Elasticsearch 문서를 참고.
+model FormRegistry {
+  id              String     @id // 비즈니스 키: "f-101" 등. ES 문서 id와 동일하게 유지.
+  status          FormStatus @default(OPEN)
+  ownerId         String?
+  owner           AdminUser? @relation("FormOwner", fields: [ownerId], references: [id])
+  deployUrl       String?
+  viewCount       Int        @default(0)
+  submissionCount Int        @default(0)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  shareRequests ShareRequest[]
+  auditLogs     AuditLog[]
+
+  @@map("form_registry")
+}
+
+model AuditLog {
+  id        String        @id @default(cuid())
+  time      DateTime      @default(now())
+  userEmail String
+  action    String
+  formId    String?
+  form      FormRegistry? @relation(fields: [formId], references: [id])
+  target    String
+  details   String
+  severity  AuditSeverity @default(info)
+
+  @@index([formId])
+  @@map("audit_logs")
+}
+
+model ShareRequest {
+  id         String             @id @default(cuid())
+  formId     String
+  form       FormRegistry       @relation(fields: [formId], references: [id])
+  fromUserId String
+  fromUser   AdminUser          @relation("ShareRequestFrom", fields: [fromUserId], references: [id])
+  toUserId   String
+  toUser     AdminUser          @relation("ShareRequestTo", fields: [toUserId], references: [id])
+  status     ShareRequestStatus @default(PENDING)
+  createdAt  DateTime           @default(now())
+
+  @@index([formId])
+  @@map("share_requests")
+}
