@@ -29,6 +29,21 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'lifecycle must be PUBLISHED or DRAFT' }, { status: 400 });
   }
 
-  const form = await setFormLifecycle(formId, body.lifecycle, actor);
-  return NextResponse.json({ form });
+  try {
+    const form = await setFormLifecycle(formId, body.lifecycle, actor);
+    return NextResponse.json({ form });
+  } catch (err) {
+    if (err instanceof Error && err.message === 'CONSENT_REQUIRED') {
+      return NextResponse.json(
+        {
+          error: 'CONSENT_REQUIRED',
+          message:
+            '응답자 신원을 요구하는 양식지는 개인정보 동의서 컴포넌트 없이 확정할 수 없습니다. ' +
+            '동의서 문항을 추가한 뒤 다시 확정해주세요.',
+        },
+        { status: 409 }
+      );
+    }
+    throw err;
+  }
 }

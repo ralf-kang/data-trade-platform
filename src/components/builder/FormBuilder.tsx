@@ -56,6 +56,20 @@ export default function FormBuilder() {
   // (스키마 버전)이 바뀐다는 것을 편집자에게 알려주기 위해 함께 불러온다.
   const [lifecycle, setLifecycle] = useState<'DRAFT' | 'PUBLISHED' | null>(null);
   const [schemaVersion, setSchemaVersion] = useState<number | null>(null);
+  // 응답자 신원 요구 수준 — 동의서 게이트와 얽혀 있어(§동의서 게이트) 별도로 관리한다.
+  const [identityMode, setIdentityMode] = useState<'ANONYMOUS' | 'IDENTIFIED' | 'AUTHENTICATED' | 'MIXED'>('ANONYMOUS');
+  // 조합 위험 경고를 이미 확인했는지 — 값이 있으면 다시 경고하지 않는다.
+  const [privacyWarningAck, setPrivacyWarningAck] = useState<string | null>(null);
+  // 개인정보 취급자(제작 자격) — 미승인이면 동의서 컴포넌트를 팔레트에서 잠근다.
+  const [authorAuthStatus, setAuthorAuthStatus] = useState<'PENDING' | 'APPROVED' | 'SUSPENDED' | 'EXPIRED' | 'REVOKED' | 'NONE'>('NONE');
+
+  // 개인정보 취급자 자격은 편집 대상 양식과 무관하게 "지금 로그인한 사람"의 상태다.
+  useEffect(() => {
+    fetch('/api/me/author-authorization')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => setAuthorAuthStatus(json?.authorization?.status ?? 'NONE'))
+      .catch(() => setAuthorAuthStatus('NONE'));
+  }, []);
 
   // 기존 양식 편집 시, 서버 API(Postgres 운영 메타데이터 + Elasticsearch 필드 구성)에서
   // 실제 데이터를 불러온다. id가 없으면(신규 작성) 빈 양식에서 시작한다.
@@ -70,6 +84,8 @@ export default function FormBuilder() {
         setTemplate({ id: form.id, title: form.title, description: form.description, fields: form.fields });
         setLifecycle(form.lifecycle ?? null);
         setSchemaVersion(form.schemaVersion ?? null);
+        setIdentityMode(form.identityMode ?? 'ANONYMOUS');
+        setPrivacyWarningAck(form.privacyWarningAck ?? null);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -179,11 +195,18 @@ export default function FormBuilder() {
     setFields(fields.map(f => f.id === id ? { ...f, ...updates } : f));
   };
 
-  const handleSave = async () => {
-    if (!template.title?.trim()) {
-      alert('보고서 제목을 입력해주세요.');
-      return;
-    }
+  // 조합 위험 감지 — 응답이 없는 설계 시점이라 실제 k=1은 계산할 수 없으므로,
+  // "노출되는 준식별자 후보가 2개 이상"이라는 보수적인 신호만 쓴다. 정밀 판정은
+  // 응답이 쌓인 뒤 사후 진단(privacy-risk API)이 담당한다.
+  const RISK_ELIGIBLE_TYPES: FieldType[] = ['select', 'radio', 'checkbox', 'number', 'date'];
+  const hasCombinationRisk = fields.filter(
+    (f) => !f.anonymous && RISK_ELIGIBLE_TYPES.includes(f.type)
+  ).length >= 2;
+
+  const [showRiskModal, setShowRiskModal] = useState(false);
+  const [riskReason, setRiskReason] = useState('');
+
+  const doSave = async (ackReason?: string) => {
     setSaving(true);
     try {
       const payload = {
@@ -202,13 +225,68 @@ export default function FormBuilder() {
         return;
       }
       const { form } = await res.json();
+
+      // 방금 생성/수정된 양식 id로 조합 위험 확인 사유를 남긴다 — 신규 양식은
+      // POST가 끝나야 id가 생기므로, 사유 기록은 저장 완료 이후에만 가능하다.
+      if (ackReason) {
+        await fetch(`/api/forms/${form.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ privacyWarningAck: ackReason }),
+        }).catch(() => undefined);
+      }
+
       setTemplate({ id: form.id, title: form.title, description: form.description, fields: form.fields });
       setLifecycle(form.lifecycle ?? null);
       setSchemaVersion(form.schemaVersion ?? null);
+      setPrivacyWarningAck(ackReason ?? form.privacyWarningAck ?? null);
       alert('저장되었습니다.');
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSave = () => {
+    if (!template.title?.trim()) {
+      alert('보고서 제목을 입력해주세요.');
+      return;
+    }
+    // 위험 신호가 있고 아직 사유를 남긴 적 없으면 저장 대신 경고를 먼저 띄운다.
+    // 진행을 막지는 않는다 — 대신 왜 진행했는지 사유를 남겨 나중의 판단 근거로 쓴다.
+    if (hasCombinationRisk && !privacyWarningAck) {
+      setRiskReason('');
+      setShowRiskModal(true);
+      return;
+    }
+    doSave();
+  };
+
+  const handleConfirmRisk = () => {
+    if (!riskReason.trim()) {
+      alert('진행 사유를 입력해주세요.');
+      return;
+    }
+    setShowRiskModal(false);
+    doSave(riskReason.trim());
+  };
+
+  const handleIdentityModeChange = async (next: typeof identityMode) => {
+    if (!template.id) {
+      // 신규(미저장) 양식은 registry 자체가 없어 PATCH 대상이 없다. 먼저 저장하도록 안내한다.
+      alert('신원 요구 수준은 양식을 먼저 저장한 뒤 설정할 수 있습니다.');
+      return;
+    }
+    const res = await fetch(`/api/forms/${template.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identityMode: next }),
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      alert(json.message ?? '변경에 실패했습니다.');
+      return;
+    }
+    setIdentityMode(next);
   };
 
   if (loading) {
@@ -234,16 +312,35 @@ export default function FormBuilder() {
           </button>
         </div>
         <div className="grid grid-cols-2 gap-2 mb-6">
-          {FIELD_TYPES.map((ft) => (
-            <button
-              key={ft.type}
-              onClick={() => addField(ft.type)}
-              className="flex flex-col items-center justify-center p-3 border rounded hover:bg-blue-50 hover:border-blue-300 transition-colors bg-gray-50 text-gray-700"
-            >
-              {ft.icon}
-              <span className="text-xs mt-2">{ft.label}</span>
-            </button>
-          ))}
+          {FIELD_TYPES.map((ft) => {
+            // 동의서 컴포넌트만 대상 — 파일·이미지·서명 등은 제외(확정 사항).
+            // 미승인자에게는 팔레트에서 잠그고 권한 신청을 안내한다. 이 잠금은 UX
+            // 편의이지 유일한 방어선이 아니다 — 우회되더라도 마스킹 계층이 실제
+            // 데이터를 가린다.
+            const locked = ft.type === 'privacy-consent' && authorAuthStatus !== 'APPROVED';
+            return (
+              <button
+                key={ft.type}
+                onClick={() =>
+                  locked
+                    ? alert(
+                        '개인정보 취급자 자격이 필요한 컴포넌트입니다.\n마이페이지에서 제작 자격을 먼저 신청해주세요.'
+                      )
+                    : addField(ft.type)
+                }
+                className={`relative flex flex-col items-center justify-center p-3 border rounded transition-colors ${
+                  locked
+                    ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                    : 'hover:bg-blue-50 hover:border-blue-300 bg-gray-50 text-gray-700'
+                }`}
+                title={locked ? '개인정보 취급자 자격 필요' : undefined}
+              >
+                {locked && <Lock className="w-3 h-3 absolute top-1.5 right-1.5 text-gray-400" />}
+                {ft.icon}
+                <span className="text-xs mt-2">{ft.label}</span>
+              </button>
+            );
+          })}
         </div>
         <div className="p-4 bg-gray-50 border-t border-gray-200">
           <h3 className="font-semibold text-gray-700 text-sm mb-3">즐겨찾기 블록 / 추천</h3>
@@ -317,6 +414,25 @@ export default function FormBuilder() {
             <div className="space-y-4 mb-8">
               <input type="text" placeholder="보고서 제목" className="w-full text-3xl font-bold border-0 border-b-2 border-transparent hover:border-gray-200 focus:border-blue-500 outline-none" value={template.title} onChange={(e) => setTemplate({ ...template, title: e.target.value })} />
               <textarea placeholder="보고서 설명" className="w-full text-gray-600 border-0 border-b-2 border-transparent hover:border-gray-200 focus:border-blue-500 outline-none resize-none" value={template.description} onChange={(e) => setTemplate({ ...template, description: e.target.value })} rows={2} />
+
+              <div className="flex items-center gap-3 pt-2">
+                <label className="text-xs font-bold text-gray-500 uppercase shrink-0">응답자 신원 요구</label>
+                <select
+                  value={identityMode}
+                  onChange={(e) => handleIdentityModeChange(e.target.value as typeof identityMode)}
+                  className="text-sm p-1.5 border rounded bg-white"
+                >
+                  <option value="ANONYMOUS">익명 — 신원 수집 안 함</option>
+                  <option value="IDENTIFIED">식별 — 개인화 링크 필수</option>
+                  <option value="AUTHENTICATED">인증 — 로그인 필수</option>
+                  <option value="MIXED">혼합 — 링크 있으면 식별, 없으면 익명</option>
+                </select>
+                {identityMode !== 'ANONYMOUS' && (
+                  <span className="text-xs text-amber-600 flex items-center gap-1">
+                    <ShieldAlert className="w-3.5 h-3.5" /> 개인정보 동의서 컴포넌트가 반드시 포함되어야 합니다
+                  </span>
+                )}
+              </div>
             </div>
 
             <div className="flex justify-between items-center mt-8">
@@ -411,6 +527,39 @@ export default function FormBuilder() {
           </div>
         )}
       </div>
+
+      {/* 조합 위험 경고 모달 — 진행을 막지 않되 사유를 남긴다 */}
+      {showRiskModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
+            <div className="flex items-center mb-3">
+              <ShieldAlert className="w-6 h-6 text-amber-600 mr-2" />
+              <h2 className="text-lg font-bold text-gray-900">식별 가능한 조합이 감지되었습니다</h2>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              선택지·숫자·날짜 항목이 2개 이상 있습니다. 개별로는 무해해 보여도 여러 항목을
+              조합하면 특정 인물이 좁혀질 수 있습니다(예: 부서 + 직급 + 입사년도).
+              그래도 진행하시려면 사유를 남겨주세요 — 응답이 쌓인 뒤 실제로 유일한 조합이
+              나오면 해당 레코드는 자동으로 비공개 처리됩니다.
+            </p>
+            <textarea
+              value={riskReason}
+              onChange={(e) => setRiskReason(e.target.value)}
+              placeholder="예: 부서 단위 통계만 필요하며 개인 식별 목적이 아님"
+              rows={3}
+              className="w-full p-3 border rounded-lg text-sm mb-4"
+            />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowRiskModal(false)} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">
+                취소
+              </button>
+              <button onClick={handleConfirmRisk} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-bold hover:bg-amber-700">
+                확인하고 이대로 진행
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* AI 양식 자동 생성기 모달 */}
       {showAiGenerator && (

@@ -119,6 +119,48 @@ export async function maskSubmissionList(
   return result;
 }
 
+// ---------------------------------------------------------------------------
+// 조합 위험 — 설계 시점 경고 + 응답 축적 후 사후 진단
+// ---------------------------------------------------------------------------
+
+/**
+ * 설계 시점 휴리스틱. 아직 응답이 없으므로 실제 k=1을 계산할 수 없어, 대신
+ * "노출되는 준식별자 후보가 2개 이상이면 조합 위험이 있다"는 보수적인 신호만 준다.
+ * 정밀한 판정은 diagnoseCombinationRisk(응답 축적 후)가 담당한다.
+ */
+export function hasCombinationRisk(fields: FormField[]): boolean {
+  return quasiIdentifierFields(fields).length >= 2;
+}
+
+export interface CombinationRiskDiagnosis {
+  totalRecords: number;
+  uniqueRecords: number;
+  quasiFieldLabels: string[];
+}
+
+/**
+ * 응답이 쌓인 뒤의 사후 진단 — 익명성 게이트(2단계)와 같은 k=1 판정 로직
+ * (countQuasiIdentifierCombinations)을 그대로 재사용한다. 새 계산식을 또 만들지 않고
+ * "얼마나 많은 레코드가 실제로 유일한 조합인가"만 집계해 알려준다.
+ */
+export async function diagnoseCombinationRisk(
+  formId: string,
+  campaignId: string | undefined,
+  fields: FormField[]
+): Promise<CombinationRiskDiagnosis> {
+  const quasiFields = quasiIdentifierFields(fields);
+  if (quasiFields.length === 0) {
+    return { totalRecords: 0, uniqueRecords: 0, quasiFieldLabels: [] };
+  }
+
+  const combos = await countQuasiIdentifierCombinations(formId, campaignId, quasiFields);
+  const totalRecords = combos.reduce((sum, c) => sum + c.count, 0);
+  const uniqueRecords = combos.filter((c) => c.count === 1).length;
+  const quasiFieldLabels = quasiFields.map((f) => f.id).map((id) => fields.find((f) => f.id === id)?.label ?? id);
+
+  return { totalRecords, uniqueRecords, quasiFieldLabels };
+}
+
 /** 단건 편의 함수 — 상세 조회 화면 등에서 쓴다. */
 export async function maskSubmissionOne(
   formId: string,

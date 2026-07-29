@@ -1,15 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser, isPlatformAdmin, requireAdmin } from '@/lib/auth';
 import {
+  acknowledgePrivacyWarning,
   changeFormOwner,
   deleteForm,
   getForm,
   incrementFormView,
   isOwnerOrSuperAdmin,
   setFormActivePeriod,
+  setFormIdentityMode,
   setFormStatus,
   updateForm,
 } from '@/lib/services/formService';
+
+function consentRequiredResponse() {
+  return NextResponse.json(
+    {
+      error: 'CONSENT_REQUIRED',
+      message:
+        '응답자 신원을 요구하는 양식지에는 개인정보 동의서 컴포넌트가 반드시 포함되어야 합니다. ' +
+        '먼저 동의서 문항을 추가한 뒤 다시 시도해주세요.',
+    },
+    { status: 409 }
+  );
+}
 
 type Params = { params: Promise<{ formId: string }> };
 
@@ -60,6 +74,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
         { status: 409 }
       );
     }
+    if (err instanceof Error && err.message === 'CONSENT_REQUIRED') return consentRequiredResponse();
     throw err;
   }
 }
@@ -108,6 +123,31 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       body.expiresAt ? new Date(body.expiresAt) : null,
       actor
     );
+  }
+
+  if (body.identityMode !== undefined) {
+    if (!(await isOwnerOrSuperAdmin(formId, actor))) {
+      return NextResponse.json({ error: 'FORBIDDEN', message: '이 양식지의 소유자만 설정을 변경할 수 있습니다.' }, { status: 403 });
+    }
+    if (!['ANONYMOUS', 'IDENTIFIED', 'AUTHENTICATED', 'MIXED'].includes(body.identityMode)) {
+      return NextResponse.json({ error: 'identityMode must be ANONYMOUS | IDENTIFIED | AUTHENTICATED | MIXED' }, { status: 400 });
+    }
+    try {
+      await setFormIdentityMode(formId, body.identityMode, actor);
+    } catch (err) {
+      if (err instanceof Error && err.message === 'CONSENT_REQUIRED') return consentRequiredResponse();
+      throw err;
+    }
+  }
+
+  if (body.privacyWarningAck !== undefined) {
+    if (!(await isOwnerOrSuperAdmin(formId, actor))) {
+      return NextResponse.json({ error: 'FORBIDDEN', message: '이 양식지의 소유자만 설정을 변경할 수 있습니다.' }, { status: 403 });
+    }
+    if (typeof body.privacyWarningAck !== 'string' || body.privacyWarningAck.trim().length < 3) {
+      return NextResponse.json({ error: 'REASON_REQUIRED', message: '사유를 3자 이상 입력해주세요.' }, { status: 400 });
+    }
+    await acknowledgePrivacyWarning(formId, body.privacyWarningAck, actor);
   }
 
   const form = await getForm(formId);

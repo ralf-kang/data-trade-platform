@@ -35,6 +35,11 @@ export interface FormView {
   lifecycle: 'DRAFT' | 'PUBLISHED';
   schemaVersion: number;
   publishedAt: string | null;
+  identityMode: 'ANONYMOUS' | 'IDENTIFIED' | 'AUTHENTICATED' | 'MIXED';
+  collectsPersonalData: boolean;
+  authorHadPrivacyAuth: boolean;
+  /** 조합 위험 경고를 확인하고 진행한 사유. null이면 아직 확인하지 않았거나 위험이 없었음. */
+  privacyWarningAck: string | null;
 }
 
 function toFormView(
@@ -47,6 +52,10 @@ function toFormView(
     lifecycle: string;
     schemaVersion: number;
     publishedAt: Date | null;
+    identityMode: string;
+    collectsPersonalData: boolean;
+    authorHadPrivacyAuth: boolean;
+    privacyWarningAck: string | null;
     viewCount: number;
     submissionCount: number;
     createdAt: Date;
@@ -70,6 +79,10 @@ function toFormView(
     lifecycle: registry.lifecycle as 'DRAFT' | 'PUBLISHED',
     schemaVersion: registry.schemaVersion,
     publishedAt: registry.publishedAt?.toISOString() ?? null,
+    identityMode: registry.identityMode as FormView['identityMode'],
+    collectsPersonalData: registry.collectsPersonalData,
+    authorHadPrivacyAuth: registry.authorHadPrivacyAuth,
+    privacyWarningAck: registry.privacyWarningAck,
     viewCount: registry.viewCount,
     submissionCount: registry.submissionCount,
     createdAt: registry.createdAt.toISOString(),
@@ -249,6 +262,15 @@ export async function updateForm(
       if (changed.length > 0) {
         throw new Error('ANONYMITY_LOCKED');
       }
+
+      // 신원을 요구하는 확정된 양식지에서 동의서 컴포넌트를 빼면, 그 순간부터
+      // "동의서 없이 식별 응답을 받는" 상태가 즉시 운영에 반영된다. DRAFT 편집은
+      // 자유롭게 두되(어차피 확정 시점에 다시 확인된다), 이미 확정된 양식은 저장
+      // 시점에 막아야 라이브 상태가 잘못된 채로 남지 않는다.
+      if (registryBefore.identityMode !== 'ANONYMOUS') {
+        const stillHasConsent = input.fields.some((f) => f.type === 'privacy-consent');
+        if (!stillHasConsent) throw new Error('CONSENT_REQUIRED');
+      }
     }
   }
 
@@ -332,6 +354,19 @@ export async function setFormLifecycle(
   lifecycle: 'DRAFT' | 'PUBLISHED',
   actor: ActingUser
 ): Promise<FormView | null> {
+  // 신원을 요구하는 양식은 동의서 없이 확정될 수 없다. DRAFT 동안 필드가 계속
+  // 바뀌므로, "그 시점에 동의서가 있었는가"가 아니라 "확정하는 지금 있는가"를
+  // 마지막에 다시 확인한다 — identityMode를 먼저 켠 뒤 동의서를 나중에 빼고
+  // 확정하는 경로까지 막아야 하기 때문이다.
+  if (lifecycle === 'PUBLISHED') {
+    const before = await prisma.formRegistry.findUniqueOrThrow({ where: { id: formId } });
+    if (before.identityMode !== 'ANONYMOUS') {
+      const template = await getFormTemplate(formId);
+      const hasConsent = template?.fields.some((f) => f.type === 'privacy-consent') ?? false;
+      if (!hasConsent) throw new Error('CONSENT_REQUIRED');
+    }
+  }
+
   const registry = await prisma.formRegistry.update({
     where: { id: formId },
     data: {
@@ -356,6 +391,69 @@ export async function setFormLifecycle(
   const template = await getFormTemplate(formId);
   if (!template) return null;
   return toFormView(registry, template);
+}
+
+/**
+ * 응답자 신원 요구 수준을 설정한다.
+ *
+ * ANONYMOUS가 아닌 값으로 켜려면 이미 동의서(privacy-consent) 컴포넌트가 있어야 한다 —
+ * "신원을 요구하면서 동의는 받지 않는" 조합을 만들 수 있는 경로를 여기서 막는다.
+ * 반대 방향(동의서를 나중에 빼는 것)은 updateForm에서 확정된 양식에 한해 막고,
+ * 확정 시점에도 다시 한번 setFormLifecycle에서 확인한다 — 세 지점이 같은 불변식을
+ * 각자의 진입 경로에서 지킨다.
+ */
+export async function setFormIdentityMode(
+  formId: string,
+  identityMode: 'ANONYMOUS' | 'IDENTIFIED' | 'AUTHENTICATED' | 'MIXED',
+  actor: ActingUser
+): Promise<FormView | null> {
+  if (identityMode !== 'ANONYMOUS') {
+    const template = await getFormTemplate(formId);
+    const hasConsent = template?.fields.some((f) => f.type === 'privacy-consent') ?? false;
+    if (!hasConsent) throw new Error('CONSENT_REQUIRED');
+  }
+
+  const registry = await prisma.formRegistry.update({
+    where: { id: formId },
+    data: { identityMode },
+    include: { owner: { select: { name: true } } },
+  });
+
+  await logAudit({
+    userEmail: actor.email,
+    action: 'FORM_IDENTITY_MODE_CHANGE',
+    target: `Form [${formId}]`,
+    details: `응답자 신원 요구 수준 → ${identityMode}`,
+    severity: identityMode === 'ANONYMOUS' ? 'info' : 'warning',
+    formId,
+  });
+
+  const template = await getFormTemplate(formId);
+  if (!template) return null;
+  return toFormView(registry, template);
+}
+
+/**
+ * 조합 위험 경고를 확인하고 진행한 사유를 기록한다.
+ *
+ * 개별로는 무해한 선택지·숫자 필드도 2개 이상 조합되면 특정 인물로 좁혀질 수 있다.
+ * 빌더는 이런 조합을 감지하면 경고하지만 진행 자체를 막지는 않는다 — 대신 왜
+ * 진행했는지 사유를 남겨, 나중에 실제로 문제가 되었을 때 판단 근거로 쓴다.
+ */
+export async function acknowledgePrivacyWarning(
+  formId: string,
+  reason: string,
+  actor: ActingUser
+): Promise<void> {
+  await prisma.formRegistry.update({ where: { id: formId }, data: { privacyWarningAck: reason } });
+  await logAudit({
+    userEmail: actor.email,
+    action: 'PRIVACY_COMBINATION_WARNING_ACK',
+    target: `Form [${formId}]`,
+    details: `식별 가능 조합 경고를 확인하고 진행 — 사유: ${reason}`,
+    severity: 'warning',
+    formId,
+  });
 }
 
 /** 슈퍼관리자 전용 — 양식지 소유권을 다른 관리자(또는 슈퍼관리자 자신)에게 이전한다. */
