@@ -60,12 +60,21 @@ export function splitSubmission(fields: FormField[], data: Record<string, unknow
 // 임계값
 // ---------------------------------------------------------------------------
 
-export async function getThreshold(formId: string): Promise<number> {
-  const [form, config] = await Promise.all([
+export async function getThreshold(formId: string, campaignId?: string): Promise<number> {
+  const [campaign, form, config] = await Promise.all([
+    campaignId
+      ? prisma.campaign.findUnique({ where: { id: campaignId }, select: { anonymityThreshold: true } })
+      : null,
     prisma.formRegistry.findUnique({ where: { id: formId }, select: { anonymityThreshold: true } }),
     prisma.systemConfig.findUnique({ where: { id: 'default' } }),
   ]);
-  return form?.anonymityThreshold ?? config?.defaultAnonymityThreshold ?? 5;
+  // 회차 → 양식 → 시스템 순으로 우선한다.
+  return (
+    campaign?.anonymityThreshold ??
+    form?.anonymityThreshold ??
+    config?.defaultAnonymityThreshold ??
+    5
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -80,23 +89,29 @@ export async function getThreshold(formId: string): Promise<number> {
 export async function bufferAnonymousPart(
   formId: string,
   anonymousData: Record<string, unknown>,
-  schemaVersion: number
+  schemaVersion: number,
+  campaignId?: string
 ): Promise<void> {
   if (Object.keys(anonymousData).length === 0) return;
 
   await prisma.anonymousResponseBuffer.create({
     data: {
       formId,
+      campaignId: campaignId ?? null,
       payloadEncrypted: encryptSecret(JSON.stringify(anonymousData)),
       bucketAt: truncateToBucket(new Date()),
       schemaVersion,
     },
   });
 
-  const threshold = await getThreshold(formId);
-  const count = await prisma.anonymousResponseBuffer.count({ where: { formId } });
+  // 임계값 판정은 회차 단위다 — Q1 3건과 Q2 3건을 합쳐 6건으로 세면 각 회차는
+  // 여전히 소수 응답인데 공개되어 버린다.
+  const threshold = await getThreshold(formId, campaignId);
+  const count = await prisma.anonymousResponseBuffer.count({
+    where: { formId, campaignId: campaignId ?? null },
+  });
   if (count >= threshold) {
-    await flushBuffer(formId, false).catch((err) => {
+    await flushBuffer(formId, false, campaignId).catch((err) => {
       // flush 실패는 제출을 막지 않는다 — 다음 기회에 재시도된다.
       console.warn(`[anonymity] flush 실패 (form=${formId}):`, (err as Error).message);
     });
@@ -109,16 +124,27 @@ export async function bufferAnonymousPart(
  * @param force 양식 마감 시 잔여분 처리 — 임계값 미만이어도 적재하되
  *              belowThreshold=true로 표시해 조회에서 제외한다.
  */
-export async function flushBuffer(formId: string, force: boolean): Promise<number> {
-  // 동시 flush 방지 — 같은 폼의 버퍼 행을 잠그고 진행한다.
+export async function flushBuffer(
+  formId: string,
+  force: boolean,
+  campaignId?: string
+): Promise<number> {
+  // 동시 flush 방지 — 같은 회차의 버퍼 행을 잠그고 진행한다.
   return prisma.$transaction(async (tx) => {
-    const rows = await tx.$queryRaw<Array<{ id: string; payloadEncrypted: string; bucketAt: Date; schemaVersion: number }>>`
-      SELECT id, "payloadEncrypted", "bucketAt", "schemaVersion"
-      FROM anonymous_response_buffer WHERE "formId" = ${formId}
-      FOR UPDATE SKIP LOCKED`;
+    const rows = campaignId
+      ? await tx.$queryRaw<Array<{ id: string; payloadEncrypted: string; bucketAt: Date; schemaVersion: number }>>`
+          SELECT id, "payloadEncrypted", "bucketAt", "schemaVersion"
+          FROM anonymous_response_buffer
+          WHERE "formId" = ${formId} AND "campaignId" = ${campaignId}
+          FOR UPDATE SKIP LOCKED`
+      : await tx.$queryRaw<Array<{ id: string; payloadEncrypted: string; bucketAt: Date; schemaVersion: number }>>`
+          SELECT id, "payloadEncrypted", "bucketAt", "schemaVersion"
+          FROM anonymous_response_buffer
+          WHERE "formId" = ${formId} AND "campaignId" IS NULL
+          FOR UPDATE SKIP LOCKED`;
     if (rows.length === 0) return 0;
 
-    const threshold = await getThreshold(formId);
+    const threshold = await getThreshold(formId, campaignId);
     const below = rows.length < threshold;
     if (below && !force) return 0; // 아직 모자람 — 대기
 
@@ -136,6 +162,7 @@ export async function flushBuffer(formId: string, force: boolean): Promise<numbe
       schemaVersion: row.schemaVersion,
       data: JSON.parse(decryptSecret(row.payloadEncrypted)) as Record<string, unknown>,
       belowThreshold: below,
+      campaignId,
     }));
 
     await bulkCreateAnonSubmissions(docs);
@@ -160,15 +187,15 @@ export class BelowThresholdError extends Error {
  * 주의: 정확한 현재 건수를 호출부에 노출하지 않는다 — "3건이라 못 봅니다"라고 알려주면
  * 조건을 바꿔가며 건수 변화를 관찰해 특정 인물의 응답 여부를 역추적할 수 있다.
  */
-export async function getAnonAggregation(formId: string, field: FormField) {
-  const threshold = await getThreshold(formId);
-  const count = await countAnonSubmissions(formId);
+export async function getAnonAggregation(formId: string, field: FormField, campaignId?: string) {
+  const threshold = await getThreshold(formId, campaignId);
+  const count = await countAnonSubmissions(formId, campaignId);
   if (count < threshold) throw new BelowThresholdError(threshold);
 
   const isFreeText = field.type === 'textarea' || field.type === 'text';
   if (isFreeText) {
-    return { kind: 'free-text' as const, values: await listAnonFreeText(formId, field.id) };
+    return { kind: 'free-text' as const, values: await listAnonFreeText(formId, field.id, campaignId) };
   }
-  const { buckets } = await aggregateAnonField(formId, field.id);
+  const { buckets } = await aggregateAnonField(formId, field.id, campaignId);
   return { kind: 'buckets' as const, buckets };
 }

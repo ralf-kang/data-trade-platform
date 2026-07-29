@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
-import { Link as LinkIcon, QrCode, Power, Eye, Copy, ExternalLink, Settings2, BarChart2, Database, Key, RefreshCw } from 'lucide-react';
+import { Link as LinkIcon, QrCode, Power, Eye, Copy, ExternalLink, Settings2, BarChart2, Database, RefreshCw, CalendarRange } from 'lucide-react';
 import Link from 'next/link';
 import type { AdminUserItem, FormListItem, MeInfo } from '@/lib/apiTypes';
 
@@ -162,6 +162,13 @@ export default function UrlManagerPage() {
                     </td>
 
                     <td className="px-6 py-4 text-right space-x-2">
+                      <Link
+                        href={`/admin/forms/${item.id}/campaigns`}
+                        className="inline-block p-2 text-slate-500 hover:text-indigo-600 bg-white border border-slate-200 rounded shadow-sm transition-colors"
+                        title="수집 회차 관리 (반복 수집 / 개인화 링크 발송)"
+                      >
+                        <CalendarRange className="w-4 h-4" />
+                      </Link>
                       <Link
                         href={`/admin/forms/${item.id}/api`}
                         className="inline-block p-2 text-slate-500 hover:text-indigo-600 bg-white border border-slate-200 rounded shadow-sm transition-colors"

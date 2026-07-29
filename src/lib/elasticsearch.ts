@@ -56,6 +56,10 @@ export interface SubmissionDocument {
   respondentId?: string;
   /** 이 응답이 어떤 신원 수준으로 수집되었는지 — 사후 신뢰도 판단의 근거. */
   identityLevel?: 'ANONYMOUS' | 'IDENTIFIED' | 'AUTHENTICATED';
+  /** 소속 회차(3단계). 회차가 곧 시계열 축이 되어 추세 분석의 기준이 된다. */
+  campaignId?: string;
+  /** 수정 횟수 — 최초 제출이 0. CampaignParticipation.revision과 일치시킨다. */
+  revision?: number;
 }
 
 /**
@@ -72,6 +76,8 @@ export interface AnonymousSubmissionDocument {
   data: Record<string, unknown>;
   /** 임계값 미만 상태로 적재된 배치(양식 마감 시 잔여분) — 조회를 막는 근거. */
   belowThreshold: boolean;
+  /** 소속 회차 — 임계값 판정이 회차 단위로 이루어져야 하므로 필수다. */
+  campaignId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -103,6 +109,8 @@ const SUBMISSION_MAPPING = {
     schemaVersion: { type: 'integer' },
     respondentId: { type: 'keyword' },
     identityLevel: { type: 'keyword' },
+    campaignId: { type: 'keyword' },
+    revision: { type: 'integer' },
     // col1, col2 ... 처럼 폼별로 늘어나는 응답 컬럼 — 동적 매핑.
     data: { type: 'object', dynamic: true },
   },
@@ -115,6 +123,7 @@ const ANON_SUBMISSION_MAPPING = {
     bucketAt: { type: 'date' },
     schemaVersion: { type: 'integer' },
     belowThreshold: { type: 'boolean' },
+    campaignId: { type: 'keyword' },
     // 익명 문항 응답 — 폼별로 키가 달라지는 비정형 영역.
     data: { type: 'object', dynamic: true },
   },
@@ -301,13 +310,17 @@ export async function bulkCreateAnonSubmissions(docs: AnonymousSubmissionDocumen
  * 익명 응답 건수 — k-익명성 게이트의 판정 근거.
  * belowThreshold로 적재된 배치(마감 시 잔여분)는 애초에 공개 대상이 아니므로 제외한다.
  */
-export async function countAnonSubmissions(formId: string): Promise<number> {
+export async function countAnonSubmissions(formId: string, campaignId?: string): Promise<number> {
   await ensureIndices();
   const res = await elasticClient.count({
     index: INDEX_NAMES.ANON_SUBMISSIONS,
     query: {
       bool: {
-        filter: [{ term: { formId } }, { term: { belowThreshold: false } }],
+        filter: [
+          { term: { formId } },
+          { term: { belowThreshold: false } },
+          ...(campaignId ? [{ term: { campaignId } }] : []),
+        ],
       },
     },
   });
@@ -322,7 +335,8 @@ export async function countAnonSubmissions(formId: string): Promise<number> {
  */
 export async function aggregateAnonField(
   formId: string,
-  fieldId: string
+  fieldId: string,
+  campaignId?: string
 ): Promise<{ buckets: Array<{ key: string; count: number }> }> {
   await ensureIndices();
   const res = await elasticClient.search({
@@ -330,7 +344,11 @@ export async function aggregateAnonField(
     size: 0,
     query: {
       bool: {
-        filter: [{ term: { formId } }, { term: { belowThreshold: false } }],
+        filter: [
+          { term: { formId } },
+          { term: { belowThreshold: false } },
+          ...(campaignId ? [{ term: { campaignId } }] : []),
+        ],
       },
     },
     aggs: {
@@ -347,7 +365,12 @@ export async function aggregateAnonField(
 }
 
 /** 자유응답 익명 문항 — 셔플된 값 배열만 반환(메타데이터 일절 없음). */
-export async function listAnonFreeText(formId: string, fieldId: string, max = 500): Promise<string[]> {
+export async function listAnonFreeText(
+  formId: string,
+  fieldId: string,
+  campaignId?: string,
+  max = 500
+): Promise<string[]> {
   await ensureIndices();
   const res = await elasticClient.search<AnonymousSubmissionDocument>({
     index: INDEX_NAMES.ANON_SUBMISSIONS,
@@ -355,7 +378,11 @@ export async function listAnonFreeText(formId: string, fieldId: string, max = 50
     _source: [`data.${fieldId}`],
     query: {
       bool: {
-        filter: [{ term: { formId } }, { term: { belowThreshold: false } }],
+        filter: [
+          { term: { formId } },
+          { term: { belowThreshold: false } },
+          ...(campaignId ? [{ term: { campaignId } }] : []),
+        ],
       },
     },
   });
@@ -368,6 +395,24 @@ export async function listAnonFreeText(formId: string, fieldId: string, max = 50
     [values[i], values[j]] = [values[j], values[i]];
   }
   return values;
+}
+
+/** 단건 제출 조회 — 사전 채움(prefill)이 직전 회차 응답을 읽을 때 사용한다. */
+export async function getSubmission(
+  formId: string,
+  submissionId: string
+): Promise<SubmissionDocument | null> {
+  await ensureIndices();
+  const res = await elasticClient
+    .get<SubmissionDocument>({
+      index: INDEX_NAMES.SUBMISSIONS,
+      id: `${formId}__${submissionId}`,
+    })
+    .catch((err) => {
+      if ((err as { meta?: { statusCode?: number } })?.meta?.statusCode === 404) return null;
+      throw err;
+    });
+  return res?._source ?? null;
 }
 
 export interface CursorListParams {

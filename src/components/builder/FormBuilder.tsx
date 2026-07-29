@@ -642,6 +642,29 @@ function FieldDetailPanel({
         </div>
       )}
 
+      {/* 반복 수집 시 이전 회차 값 처리(3단계). 익명 문항은 지난 값을 찾을 수 없어 제외된다. */}
+      {!field.anonymous && (
+        <div>
+          <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">반복 수집 시 이전 값</label>
+          <select
+            className="w-full p-2 border rounded text-sm bg-white"
+            value={field.prefillPolicy ?? 'clear'}
+            onChange={(e) => onChange({ prefillPolicy: e.target.value as FormField['prefillPolicy'] })}
+          >
+            <option value="clear">매번 새로 입력 (기본)</option>
+            <option value="carry-over">지난 값 그대로 채우기</option>
+            <option value="carry-with-confirm">채우되 확인 체크 필수</option>
+          </select>
+          <p className="text-xs text-slate-400 mt-1">
+            {field.prefillPolicy === 'carry-over'
+              ? '부서·직급처럼 잘 바뀌지 않는 항목에 적합합니다.'
+              : field.prefillPolicy === 'carry-with-confirm'
+                ? '응답자가 확인 체크를 해야 제출됩니다. 자격증 만료일처럼 무심코 넘기면 안 되는 항목에 쓰세요.'
+                : '실적·의견처럼 매번 달라야 하는 항목은 이 설정을 유지하세요.'}
+          </p>
+        </div>
+      )}
+
       {/* 문항 단위 익명성 — 마스킹과는 전혀 다른 장치라 별도 블록으로 둔다.
           마스킹은 "화면에서 가리기"지만, 익명은 "응답자와의 연결 자체를 만들지 않기"다. */}
       <div className={`p-3 rounded border ${field.anonymous ? 'bg-slate-900 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>

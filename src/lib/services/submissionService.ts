@@ -9,6 +9,7 @@ import {
 } from '@/lib/elasticsearch';
 import { isFormActiveNow } from '@/lib/services/formService';
 import { bufferAnonymousPart, splitSubmission } from '@/lib/services/anonymityService';
+import { getActiveCampaign } from '@/lib/services/campaignService';
 import type { RespondentIdentity } from '@/lib/respondent';
 import { logAudit } from '@/lib/services/auditService';
 import { notifyFormOwner } from '@/lib/services/notificationService';
@@ -78,8 +79,24 @@ export async function submitFormResponse(
     throw new Error('FORM_NOT_ACTIVE');
   }
 
+  // 회차 결정(3단계): 토큰에 회차가 실려 있으면 그 회차, 없으면 현재 열린 회차.
+  // 회차가 하나도 없는 양식은 마이그레이션에서 기본 회차를 받았으므로 정상적으로는
+  // 여기서 null이 나오지 않는다. null이면 회차 없이 저장해 기존 동작을 유지한다.
+  const campaign = identity?.campaignId
+    ? await prisma.campaign.findUnique({ where: { id: identity.campaignId } })
+    : await getActiveCampaign(formId);
+
   const template = await getFormTemplate(formId);
   const fields = template?.fields ?? [];
+
+  // 회차당 1인 1응답 — ES에는 유니크 제약이 없으므로 정형 저장소의 참여 기록으로 강제한다.
+  // 재제출은 거부가 아니라 수정으로 처리한다(응답자 입장에서 "다시 냈더니 오류"는 최악이다).
+  const existingParticipation =
+    campaign && identity?.user
+      ? await prisma.campaignParticipation.findUnique({
+          where: { campaignId_userId: { campaignId: campaign.id, userId: identity.user.id } },
+        })
+      : null;
 
   // 이상치 검증은 분할 "전" 전체 데이터로 수행한다 — 익명 문항도 형식 검증은 받아야 한다.
   // 단, 로그·알림에 남길 수 있는 것은 일반 문항의 이상치뿐이다(아래 참조).
@@ -89,10 +106,14 @@ export async function submitFormResponse(
   // 분할은 반드시 서버에서 — 클라이언트가 두 요청으로 나누면 네트워크에서 상관관계가 샌다.
   const { identified, anonymous, hasAnonymousFields } = splitSubmission(fields, data);
 
-  const submissionId = `SUB-${randomUUID().slice(0, 8).toUpperCase()}`;
+  const isEdit = !!existingParticipation;
+  const submissionId = existingParticipation?.submissionId
+    ?? `SUB-${randomUUID().slice(0, 8).toUpperCase()}`;
   const submittedAt = new Date().toISOString();
+  const revision = existingParticipation ? existingParticipation.revision + 1 : 0;
 
   // 식별 문서 — 익명 문항이 전부여도 참여 사실은 남긴다(응답률·보상의 근거).
+  // 수정이면 같은 submissionId를 덮어써 회차당 문서가 하나로 유지된다.
   await esCreateSubmission({
     formId,
     submissionId,
@@ -100,16 +121,46 @@ export async function submitFormResponse(
     data: identified,
     respondentId: identity?.user?.id,
     identityLevel: identity?.level ?? 'ANONYMOUS',
+    campaignId: campaign?.id,
+    revision,
   });
 
   // 익명 조각 — 즉시 색인하지 않고 버퍼로. k건이 모이면 셔플되어 적재된다.
-  if (hasAnonymousFields) {
-    await bufferAnonymousPart(formId, anonymous, registry.schemaVersion);
+  //
+  // 수정 시에는 익명 조각을 다시 담지 않는다. 어느 익명 문서가 이 응답자의 것인지
+  // 지목할 방법이 없어(그것이 익명성의 정의다) 덮어쓸 수 없고, 그냥 추가하면
+  // 같은 사람의 응답이 중복 집계된다. 이 제약은 응답 화면에서 사전 고지한다.
+  if (hasAnonymousFields && !isEdit) {
+    await bufferAnonymousPart(formId, anonymous, registry.schemaVersion, campaign?.id);
   }
 
-  await prisma.formRegistry
-    .update({ where: { id: formId }, data: { submissionCount: { increment: 1 } } })
-    .catch(() => undefined);
+  // 참여 기록 — 신원이 있을 때만. 익명 응답은 누가 냈는지 알 수 없으므로 기록하지 않는다.
+  if (campaign && identity?.user) {
+    const onTime = !campaign.endsAt || new Date() <= campaign.endsAt;
+    await prisma.campaignParticipation.upsert({
+      where: { campaignId_userId: { campaignId: campaign.id, userId: identity.user.id } },
+      update: { revision, lastEditedAt: new Date() },
+      create: {
+        campaignId: campaign.id,
+        userId: identity.user.id,
+        submissionId,
+        onTime,
+      },
+    });
+    await prisma.campaignTarget
+      .updateMany({
+        where: { campaignId: campaign.id, userId: identity.user.id, respondedAt: null },
+        data: { respondedAt: new Date() },
+      })
+      .catch(() => undefined);
+  }
+
+  // 신규 제출만 카운트한다 — 수정할 때마다 늘어나면 응답자 수가 부풀려진다.
+  if (!isEdit) {
+    await prisma.formRegistry
+      .update({ where: { id: formId }, data: { submissionCount: { increment: 1 } } })
+      .catch(() => undefined);
+  }
 
   if (anomalies.length > 0) {
     // 익명 문항 이상치는 라벨·값·응답자를 로그에 남기면 익명성이 그대로 깨진다.
@@ -147,7 +198,7 @@ export async function submitFormResponse(
     }
   }
 
-  return { submissionId, submittedAt, anomalies };
+  return { submissionId, submittedAt, anomalies, campaignId: campaign?.id ?? null, revision, isEdit };
 }
 
 export async function editSubmission(

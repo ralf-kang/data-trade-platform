@@ -40,7 +40,7 @@ export interface IssueTokensResult {
 export async function issueTokens(
   formId: string,
   userIds: string[],
-  opts: { expiresAt: Date; singleUse?: boolean; issuedBy: string; baseUrl: string }
+  opts: { expiresAt: Date; singleUse?: boolean; issuedBy: string; baseUrl: string; campaignId?: string }
 ): Promise<IssueTokensResult> {
   const result: IssueTokensResult = { issued: [], skipped: [] };
 
@@ -54,11 +54,19 @@ export async function issueTokens(
       result.skipped.push({ userId, reason: `비활성 계정(${user.status})` });
       continue;
     }
+    // 중복 발급 방지는 회차 단위로 판단한다. 양식 단위로 보면 1회차 링크가 살아 있는
+    // 동안 2회차 링크를 못 받아, 반복 수집에서 아무도 다음 회차에 응답할 수 없게 된다.
     const existing = await prisma.respondentToken.findFirst({
-      where: { userId, formId, revokedAt: null, expiresAt: { gt: new Date() } },
+      where: {
+        userId,
+        formId,
+        campaignId: opts.campaignId ?? null,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+      },
     });
     if (existing) {
-      result.skipped.push({ userId, reason: '유효한 토큰이 이미 있음' });
+      result.skipped.push({ userId, reason: '이 회차의 유효한 링크가 이미 있음' });
       continue;
     }
 
@@ -69,6 +77,7 @@ export async function issueTokens(
         tokenPrefix: raw.slice(0, 12),
         userId,
         formId,
+        campaignId: opts.campaignId ?? null,
         expiresAt: opts.expiresAt,
         singleUse: opts.singleUse ?? false,
         issuedBy: opts.issuedBy,
@@ -100,9 +109,16 @@ export interface RespondentIdentity {
   level: 'ANONYMOUS' | 'IDENTIFIED' | 'AUTHENTICATED';
   user: User | null;
   tokenId: string | null;
+  /** 링크가 특정 회차용으로 발급되었으면 그 회차 — 제출이 이 회차로 귀속된다(3단계). */
+  campaignId: string | null;
 }
 
-const ANONYMOUS: RespondentIdentity = { level: 'ANONYMOUS', user: null, tokenId: null };
+const ANONYMOUS: RespondentIdentity = {
+  level: 'ANONYMOUS',
+  user: null,
+  tokenId: null,
+  campaignId: null,
+};
 
 /** 응답 세션 쿠키 이름 — Route Handler가 직접 심을 수 있도록 노출한다. */
 export function respondentCookieName(formId: string): string {
@@ -157,7 +173,7 @@ export async function resolveRespondent(formId: string): Promise<RespondentIdent
   if (token.revokedAt || token.expiresAt.getTime() < Date.now()) return ANONYMOUS;
   if (token.user.status !== 'ACTIVE') return ANONYMOUS;
 
-  return { level: 'IDENTIFIED', user: token.user, tokenId: token.id };
+  return { level: 'IDENTIFIED', user: token.user, tokenId: token.id, campaignId: token.campaignId };
 }
 
 /**
