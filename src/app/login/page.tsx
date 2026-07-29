@@ -9,7 +9,10 @@ export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  // 임직원(member) / 일반 관리자(admin) / 최고 관리자(super) 3분할.
+  // 임직원 진입점이 없어 응답자가 자기 데이터를 볼 방법이 아예 없었다.
+  const [role, setRole] = useState<'member' | 'admin' | 'super'>('member');
+  const isSuperAdmin = role === 'super';
   const [showMfa, setShowMfa] = useState(false);
   const [mfaCode, setMfaCode] = useState('');
   
@@ -20,18 +23,19 @@ export default function LoginPage() {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSuperAdmin) {
+    if (role === 'super') {
       if (email !== DEFAULT_ID || password !== DEFAULT_PW) {
         alert('이메일 또는 비밀번호가 일치하지 않습니다.\n(기본 계정: ralfkang@ktl.re.kr / test1234)');
         return;
       }
       setShowMfa(true);
-    } else {
-      // 일반 관리자 로그인 처리
-      document.cookie = "adminRole=admin; path=/";
-      document.cookie = `adminEmail=${encodeURIComponent(email)}; path=/`;
-      router.push('/admin/dashboard');
+      return;
     }
+    // NOTE: 아직 쿠키를 그대로 신뢰하는 개발용 브릿지다. 마이페이지는 개인 데이터와
+    // (앞으로) 포인트를 다루므로, 운영 전환 시 반드시 실제 인증으로 교체해야 한다.
+    document.cookie = "adminRole=admin; path=/";
+    document.cookie = `adminEmail=${encodeURIComponent(email)}; path=/`;
+    router.push(role === 'member' ? '/me' : '/admin/dashboard');
   };
 
   const handleMfaSubmit = (e: React.FormEvent) => {
@@ -61,26 +65,37 @@ export default function LoginPage() {
         {!showMfa ? (
           <form onSubmit={handleLogin} className="p-8">
             {/* 권한 토글 스위치 */}
-            <div className="flex p-1 mb-8 bg-gray-100 rounded-lg">
-              <button
-                type="button"
-                onClick={() => setIsSuperAdmin(false)}
-                className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${
-                  !isSuperAdmin ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                일반 관리자
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsSuperAdmin(true)}
-                className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${
-                  isSuperAdmin ? 'bg-slate-900 shadow-sm text-white' : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                최고 관리자 (Super)
-              </button>
+            <div className="flex p-1 mb-3 bg-gray-100 rounded-lg">
+              {([
+                ['member', '임직원'],
+                ['admin', '일반 관리자'],
+                ['super', '최고 관리자'],
+              ] as const).map(([r, labelText]) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => setRole(r)}
+                  className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${
+                    role === r
+                      ? r === 'super'
+                        ? 'bg-slate-900 shadow-sm text-white'
+                        : 'bg-white shadow-sm text-indigo-600'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {labelText}
+                </button>
+              ))}
             </div>
+
+            {/* 임직원은 로그인 없이도 개인화 링크로 응답할 수 있다. 로그인은
+                이력·추세·포인트를 통합해서 보기 위한 것이라는 점을 분명히 한다. */}
+            {role === 'member' && (
+              <p className="mb-6 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                받으신 <strong>응답 링크로는 로그인 없이</strong> 바로 응답하실 수 있습니다.
+                로그인은 <strong>내 응답 이력·추세·포인트</strong>를 확인할 때 필요합니다.
+              </p>
+            )}
 
             <div className="space-y-5">
               <div>
