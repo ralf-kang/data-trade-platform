@@ -71,6 +71,9 @@ services:
       ELASTICSEARCH_URL: http://elasticsearch:9200
       ELASTICSEARCH_USERNAME: elastic
       ELASTICSEARCH_PASSWORD: ${ELASTICSEARCH_PASSWORD:-changeme}
+      # LDAP 바인딩 비밀번호 등 비밀값의 AES-256-GCM 암호화 키(src/lib/crypto.ts).
+      # 미설정이면 LDAP 설정 저장이 실패한다 — 약한 기본키로 조용히 넘어가지 않도록 의도한 동작.
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:-}
       NODE_ENV: production
     depends_on:
       postgres:

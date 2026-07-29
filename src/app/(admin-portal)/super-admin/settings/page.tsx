@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Settings, Mail, Key, Save, CheckCircle2, Globe, QrCode } from 'lucide-react';
 import Link from 'next/link';
+import LdapSettings from '@/components/settings/LdapSettings';
 
 export default function SuperAdminSettingsPage() {
   const [isSaved, setIsSaved] = useState(false);
@@ -93,6 +94,11 @@ export default function SuperAdminSettingsPage() {
               </button>
             </div>
           </div>
+        </div>
+
+        {/* LDAP / AD 연동 — 임직원 계정의 출처가 되므로 다른 설정보다 앞에 둔다 */}
+        <div className="mb-8">
+          <LdapSettings />
         </div>
 
         <form onSubmit={handleSave} className="space-y-8">

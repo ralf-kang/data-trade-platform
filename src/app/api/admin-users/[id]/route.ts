@@ -20,9 +20,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       {
         name: body.name,
         email: body.email,
-        orgName: body.orgName,
-        role: body.role,
-        isActive: body.isActive,
+        department: body.department,
+        position: body.position,
+        roles: body.roles,
+        status: body.status,
         canBulkExport: body.canBulkExport,
       },
       actor

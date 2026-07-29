@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentAdmin, requireAdmin } from '@/lib/auth';
+import { getCurrentUser, isPlatformAdmin, requireAdmin } from '@/lib/auth';
 import {
   changeFormOwner,
   deleteForm,
@@ -34,7 +34,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   if (unauthorized) return unauthorized;
 
   const { formId } = await params;
-  const actor = await getCurrentAdmin();
+  const actor = await getCurrentUser();
   if (!(await isOwnerOrSuperAdmin(formId, actor))) {
     return NextResponse.json({ error: 'FORBIDDEN', message: '이 양식지의 소유자만 편집할 수 있습니다.' }, { status: 403 });
   }
@@ -59,10 +59,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   const { formId } = await params;
   const body = await request.json();
-  const actor = await getCurrentAdmin();
+  const actor = await getCurrentUser();
 
   if (body.ownerId !== undefined) {
-    if (actor.role !== 'SUPER_ADMIN') {
+    if (!isPlatformAdmin(actor)) {
       return NextResponse.json({ error: 'FORBIDDEN', message: '소유권 이전은 슈퍼관리자만 가능합니다.' }, { status: 403 });
     }
     try {
@@ -104,7 +104,7 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
   if (unauthorized) return unauthorized;
 
   const { formId } = await params;
-  const actor = await getCurrentAdmin();
+  const actor = await getCurrentUser();
   if (!(await isOwnerOrSuperAdmin(formId, actor))) {
     return NextResponse.json({ error: 'FORBIDDEN', message: '이 양식지의 소유자만 삭제할 수 있습니다.' }, { status: 403 });
   }

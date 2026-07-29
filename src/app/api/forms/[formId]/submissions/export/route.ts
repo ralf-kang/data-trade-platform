@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentAdmin, requireAdmin } from '@/lib/auth';
+import { getCurrentUser, isPlatformAdmin, requireAdmin } from '@/lib/auth';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { canAccessFormData, getForm } from '@/lib/services/formService';
 import { exportFormSubmissions } from '@/lib/services/submissionService';
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest, { params }: Params) {
   if (unauthorized) return unauthorized;
 
   const { formId } = await params;
-  const actor = await getCurrentAdmin();
+  const actor = await getCurrentUser();
 
   if (!(await canAccessFormData(formId, actor))) {
     return NextResponse.json(
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest, { params }: Params) {
   }
 
   // 슈퍼관리자가 개인정보 오남용을 우려해 개별 관리자의 대량 추출을 제한할 수 있다.
-  if (!actor.canBulkExport && actor.role !== 'SUPER_ADMIN') {
+  if (!actor.canBulkExport && !isPlatformAdmin(actor)) {
     return NextResponse.json(
       { error: 'EXPORT_RESTRICTED', message: '대량 추출 권한이 슈퍼관리자에 의해 제한되어 있습니다.' },
       { status: 403 }

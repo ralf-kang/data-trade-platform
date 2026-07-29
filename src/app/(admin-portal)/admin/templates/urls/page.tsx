@@ -68,7 +68,7 @@ export default function UrlManagerPage() {
   };
 
   const settingsForm = urls.find((u) => u.id === settingsFormId) ?? null;
-  const canManage = (form: FormListItem) => me?.role === 'SUPER_ADMIN' || form.ownerId === me?.id;
+  const canManage = (form: FormListItem) => !!me?.isPlatformAdmin || form.ownerId === me?.id;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col p-8">
@@ -280,7 +280,7 @@ function SettingsModal({
   const [transferTo, setTransferTo] = useState('');
   const [shareTo, setShareTo] = useState('');
   const [saving, setSaving] = useState(false);
-  const isSuperAdmin = me?.role === 'SUPER_ADMIN';
+  const isSuperAdmin = !!me?.isPlatformAdmin;
 
   const handleSavePeriod = async () => {
     setSaving(true);

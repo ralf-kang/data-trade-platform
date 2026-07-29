@@ -7,7 +7,8 @@ import {
 } from '@/lib/elasticsearch';
 import { logAudit } from '@/lib/services/auditService';
 import type { FormField } from '@/components/builder/types';
-import type { AdminUser } from '@/generated/prisma/client';
+import type { ActingUser } from '@/lib/auth';
+import { isPlatformAdmin } from '@/lib/auth';
 
 /**
  * 폼 하나를 두 저장소에서 합쳐서 내려주는 뷰 모델.
@@ -94,8 +95,8 @@ export function isFormActiveNow(form: {
 }
 
 /** 소유자 본인이거나 슈퍼관리자인지 (편집/삭제/기간설정 권한 판정용). */
-export async function isOwnerOrSuperAdmin(formId: string, actor: AdminUser): Promise<boolean> {
-  if (actor.role === 'SUPER_ADMIN') return true;
+export async function isOwnerOrSuperAdmin(formId: string, actor: ActingUser): Promise<boolean> {
+  if (isPlatformAdmin(actor)) return true;
   const registry = await prisma.formRegistry.findUnique({ where: { id: formId }, select: { ownerId: true } });
   return registry?.ownerId === actor.id;
 }
@@ -129,10 +130,10 @@ export type DataAccessLevel = 'owner' | 'shared' | 'super-admin' | 'none';
  * 대한 조회는 제출데이터 통합 조회 화면에서 확인 할 수 있다."
  */
 export async function listFormsWithAccess(
-  actor: AdminUser
+  actor: ActingUser
 ): Promise<Array<FormView & { dataAccess: DataAccessLevel }>> {
   const forms = await listForms();
-  if (actor.role === 'SUPER_ADMIN') {
+  if (isPlatformAdmin(actor)) {
     return forms.map((f) => ({ ...f, dataAccess: 'super-admin' as const }));
   }
   // ShareRequest에서 fromUser = 권한을 요청/부여받는 쪽, toUser = 승인하는 소유자다.
@@ -168,7 +169,7 @@ export interface CreateFormInput {
   fields: FormField[];
 }
 
-export async function createForm(input: CreateFormInput, actor: AdminUser): Promise<FormView> {
+export async function createForm(input: CreateFormInput, actor: ActingUser): Promise<FormView> {
   const id = input.id || `tpl-${Date.now()}`;
   const now = new Date().toISOString();
 
@@ -215,7 +216,7 @@ export interface UpdateFormInput {
 export async function updateForm(
   formId: string,
   input: UpdateFormInput,
-  actor: AdminUser
+  actor: ActingUser
 ): Promise<FormView | null> {
   const existing = await getFormTemplate(formId);
   if (!existing) return null;
@@ -272,7 +273,7 @@ export async function updateForm(
 export async function setFormStatus(
   formId: string,
   status: 'OPEN' | 'CLOSED',
-  actor: AdminUser
+  actor: ActingUser
 ): Promise<void> {
   await prisma.formRegistry.update({ where: { id: formId }, data: { status } });
   await logAudit({
@@ -292,7 +293,7 @@ export async function setFormStatus(
 export async function setFormLifecycle(
   formId: string,
   lifecycle: 'DRAFT' | 'PUBLISHED',
-  actor: AdminUser
+  actor: ActingUser
 ): Promise<FormView | null> {
   const registry = await prisma.formRegistry.update({
     where: { id: formId },
@@ -324,11 +325,11 @@ export async function setFormLifecycle(
 export async function changeFormOwner(
   formId: string,
   newOwnerId: string,
-  actor: AdminUser
+  actor: ActingUser
 ): Promise<void> {
   const [oldRegistry, newOwner] = await Promise.all([
     prisma.formRegistry.findUniqueOrThrow({ where: { id: formId }, include: { owner: true } }),
-    prisma.adminUser.findUniqueOrThrow({ where: { id: newOwnerId } }),
+    prisma.user.findUniqueOrThrow({ where: { id: newOwnerId } }),
   ]);
   await prisma.formRegistry.update({ where: { id: formId }, data: { ownerId: newOwnerId } });
   await logAudit({
@@ -346,7 +347,7 @@ export async function setFormActivePeriod(
   formId: string,
   startsAt: Date | null,
   expiresAt: Date | null,
-  actor: AdminUser
+  actor: ActingUser
 ): Promise<void> {
   await prisma.formRegistry.update({ where: { id: formId }, data: { startsAt, expiresAt } });
   await logAudit({
@@ -364,8 +365,8 @@ export async function setFormActivePeriod(
  * 슈퍼관리자는 항상 접근 가능, 소유자 본인, 또는 소유자로부터 승인(APPROVED)된 공유 요청이
  * 있는 경우에만 허용한다.
  */
-export async function canAccessFormData(formId: string, actor: AdminUser): Promise<boolean> {
-  if (actor.role === 'SUPER_ADMIN') return true;
+export async function canAccessFormData(formId: string, actor: ActingUser): Promise<boolean> {
+  if (isPlatformAdmin(actor)) return true;
 
   const registry = await prisma.formRegistry.findUnique({ where: { id: formId } });
   if (!registry) return false;
@@ -384,7 +385,7 @@ export async function incrementFormView(formId: string): Promise<void> {
     .catch(() => undefined); // 조회수 증가 실패는 조용히 무시 (비핵심 통계)
 }
 
-export async function deleteForm(formId: string, actor: AdminUser): Promise<void> {
+export async function deleteForm(formId: string, actor: ActingUser): Promise<void> {
   await Promise.all([
     deleteFormTemplate(formId),
     prisma.formRegistry.delete({ where: { id: formId } }).catch(() => undefined),

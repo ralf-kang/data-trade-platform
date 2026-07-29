@@ -44,16 +44,44 @@ export interface ApiKeyItem {
   createdAt: string;
 }
 
+export type RoleType = 'MEMBER' | 'AUTHOR' | 'PLATFORM_ADMIN';
+export type UserStatus = 'ACTIVE' | 'SUSPENDED' | 'LEFT';
+export type UserSource = 'LOCAL' | 'LDAP';
+
+export interface UserRoleItem {
+  id: string;
+  role: RoleType;
+  /** null이면 전역 권한, 값이 있으면 해당 양식지에만 위임된 권한 */
+  scopeFormId: string | null;
+  grantedBy: string;
+  expiresAt: string | null;
+}
+
 export interface AdminUserItem {
   id: string;
   email: string;
   name: string;
-  role: 'ADMIN' | 'SUPER_ADMIN';
-  orgName: string | null;
-  isActive: boolean;
+  roles: UserRoleItem[];
+  department: string | null;
+  position: string | null;
+  status: UserStatus;
+  source: UserSource;
+  employeeNo: string | null;
+  lastSyncedAt: string | null;
   canBulkExport: boolean;
   createdAt: string;
   _count: { formsOwned: number };
+}
+
+/** 전역 역할 보유 여부 — 양식 단위 위임(scopeFormId != null)은 제외한다. */
+export function hasGlobalRole(user: { roles: UserRoleItem[] }, role: RoleType): boolean {
+  const now = Date.now();
+  return user.roles.some(
+    (r) =>
+      r.role === role &&
+      r.scopeFormId === null &&
+      (!r.expiresAt || new Date(r.expiresAt).getTime() > now)
+  );
 }
 
 export interface NotificationItem {
@@ -98,7 +126,8 @@ export interface MeInfo {
   id: string;
   email: string;
   name: string;
-  role: 'ADMIN' | 'SUPER_ADMIN';
+  roles: RoleType[];
+  isPlatformAdmin: boolean;
   canBulkExport: boolean;
 }
 

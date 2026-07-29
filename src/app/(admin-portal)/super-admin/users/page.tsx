@@ -3,13 +3,13 @@
 import { useEffect, useState } from 'react';
 import { Users, Ban, Trash2, Shield, ShieldAlert, CheckCircle2, DownloadCloud } from 'lucide-react';
 import Link from 'next/link';
-import type { AdminUserItem } from '@/lib/apiTypes';
+import { hasGlobalRole, type AdminUserItem, type RoleType } from '@/lib/apiTypes';
 
 export default function AdminUsersManagementPage() {
   const [users, setUsers] = useState<AdminUserItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<AdminUserItem | null>(null);
-  const [form, setForm] = useState({ name: '', email: '', orgName: '' });
+  const [form, setForm] = useState({ name: '', email: '', department: '', position: '' });
   const [saving, setSaving] = useState(false);
   const [reassignOwnerId, setReassignOwnerId] = useState('');
 
@@ -23,7 +23,7 @@ export default function AdminUsersManagementPage() {
 
   const openEdit = (user: AdminUserItem) => {
     setEditingUser(user);
-    setForm({ name: user.name, email: user.email, orgName: user.orgName ?? '' });
+    setForm({ name: user.name, email: user.email, department: user.department ?? '', position: user.position ?? '' });
     setReassignOwnerId('');
   };
 
@@ -49,21 +49,25 @@ export default function AdminUsersManagementPage() {
     if (!editingUser) return;
     setSaving(true);
     try {
-      await patchUser(editingUser.id, { name: form.name, email: form.email, orgName: form.orgName || null });
+      await patchUser(editingUser.id, { name: form.name, email: form.email, department: form.department || null, position: form.position || null });
     } finally {
       setSaving(false);
     }
   };
 
+  // 역할은 이제 다중이다. 여기서는 전역 역할 목록을 통째로 교체한다.
   const handleRoleChange = async (user: AdminUserItem) => {
-    const nextRole = user.role === 'SUPER_ADMIN' ? 'ADMIN' : 'SUPER_ADMIN';
-    const label = nextRole === 'SUPER_ADMIN' ? '슈퍼관리자로 승격' : '일반 관리자로 강등';
+    const isAdmin = hasGlobalRole(user, 'PLATFORM_ADMIN');
+    const nextRoles: RoleType[] = isAdmin
+      ? ['AUTHOR', 'MEMBER']
+      : ['PLATFORM_ADMIN', 'AUTHOR', 'MEMBER'];
+    const label = isAdmin ? '일반 관리자로 강등' : '슈퍼관리자로 승격';
     if (!confirm(`[${user.name}] 님을 ${label}하시겠습니까?`)) return;
-    await patchUser(user.id, { role: nextRole });
+    await patchUser(user.id, { roles: nextRoles });
   };
 
   const handleActiveToggle = async (user: AdminUserItem) => {
-    await patchUser(user.id, { isActive: !user.isActive });
+    await patchUser(user.id, { status: user.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE' });
   };
 
   const handleBulkExportToggle = async (user: AdminUserItem) => {
@@ -144,9 +148,9 @@ export default function AdminUsersManagementPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      {user.role === 'SUPER_ADMIN' ? (
+                      {hasGlobalRole(user, 'PLATFORM_ADMIN') ? (
                         <span className="inline-flex items-center px-2.5 py-1 rounded bg-red-50 text-red-700 border border-red-200 text-xs font-bold">
-                          <Shield className="w-3 h-3 mr-1" /> SUPER_ADMIN
+                          <Shield className="w-3 h-3 mr-1" /> PLATFORM_ADMIN
                         </span>
                       ) : (
                         <span className="inline-flex items-center px-2.5 py-1 rounded bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold">
@@ -155,7 +159,7 @@ export default function AdminUsersManagementPage() {
                       )}
                     </td>
                     <td className="px-6 py-4">
-                      {user.isActive ? (
+                      {(user.status === 'ACTIVE') ? (
                         <span className="inline-flex items-center px-2.5 py-1 rounded-full text-emerald-700 bg-emerald-50 text-xs font-bold">
                           <CheckCircle2 className="w-3 h-3 mr-1" /> 정상
                         </span>
@@ -212,7 +216,7 @@ export default function AdminUsersManagementPage() {
                   <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full mt-1 p-2 border rounded text-sm" />
                 </label>
                 <label className="text-xs font-semibold text-slate-500">소속(선택)
-                  <input value={form.orgName} onChange={(e) => setForm({ ...form, orgName: e.target.value })} className="w-full mt-1 p-2 border rounded text-sm" />
+                  <input value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} className="w-full mt-1 p-2 border rounded text-sm" />
                 </label>
                 <button onClick={handleSaveProfile} disabled={saving} className="mt-2 py-2 bg-indigo-600 text-white text-sm font-bold rounded hover:bg-indigo-700 disabled:opacity-50">
                   {saving ? '저장 중...' : '속성 저장'}
@@ -222,26 +226,26 @@ export default function AdminUsersManagementPage() {
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg flex justify-between items-center">
                 <div>
                   <h4 className="font-bold text-slate-800">계정 권한</h4>
-                  <p className="text-xs text-slate-500 mt-1">현재: {editingUser.role === 'SUPER_ADMIN' ? '최고 관리자' : '일반 관리자'}</p>
+                  <p className="text-xs text-slate-500 mt-1">현재: {hasGlobalRole(editingUser, 'PLATFORM_ADMIN') ? '최고 관리자' : '일반 관리자'}</p>
                 </div>
                 <button
                   onClick={() => handleRoleChange(editingUser)}
                   className="px-3 py-1.5 bg-white border border-indigo-200 text-indigo-600 text-sm font-bold rounded shadow-sm hover:bg-indigo-50"
                 >
-                  {editingUser.role === 'SUPER_ADMIN' ? '일반 관리자로 강등' : '슈퍼관리자로 승급'}
+                  {hasGlobalRole(editingUser, 'PLATFORM_ADMIN') ? '일반 관리자로 강등' : '슈퍼관리자로 승급'}
                 </button>
               </div>
 
               <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg flex justify-between items-center">
                 <div>
                   <h4 className="font-bold text-amber-900">계정 상태 (제재)</h4>
-                  <p className="text-xs text-amber-700 mt-1">현재: {editingUser.isActive ? '정상 활동 중' : '정지됨'}</p>
+                  <p className="text-xs text-amber-700 mt-1">현재: {(editingUser.status === 'ACTIVE') ? '정상 활동 중' : '정지됨'}</p>
                 </div>
                 <button
                   onClick={() => handleActiveToggle(editingUser)}
-                  className={`px-3 py-1.5 bg-white border text-sm font-bold rounded shadow-sm ${editingUser.isActive ? 'border-amber-300 text-amber-600 hover:bg-amber-100' : 'border-emerald-300 text-emerald-600 hover:bg-emerald-100'}`}
+                  className={`px-3 py-1.5 bg-white border text-sm font-bold rounded shadow-sm ${(editingUser.status === 'ACTIVE') ? 'border-amber-300 text-amber-600 hover:bg-amber-100' : 'border-emerald-300 text-emerald-600 hover:bg-emerald-100'}`}
                 >
-                  {editingUser.isActive ? '계정 정지하기' : '정지 해제하기'}
+                  {(editingUser.status === 'ACTIVE') ? '계정 정지하기' : '정지 해제하기'}
                 </button>
               </div>
 
@@ -258,7 +262,7 @@ export default function AdminUsersManagementPage() {
                 </button>
               </div>
 
-              {editingUser.role !== 'SUPER_ADMIN' && (
+              {!hasGlobalRole(editingUser, 'PLATFORM_ADMIN') && (
                 <div className="p-4 bg-rose-50 border border-rose-200 rounded-lg space-y-3">
                   <div>
                     <h4 className="font-bold text-rose-900">계정 삭제</h4>
@@ -273,7 +277,7 @@ export default function AdminUsersManagementPage() {
                   >
                     <option value="">양식지 위임 대상 선택...</option>
                     {users.filter((u) => u.id !== editingUser.id).map((u) => (
-                      <option key={u.id} value={u.id}>{u.name} ({u.email}){u.role === 'SUPER_ADMIN' ? ' — 슈퍼관리자 귀속' : ''}</option>
+                      <option key={u.id} value={u.id}>{u.name} ({u.email}){hasGlobalRole(u, 'PLATFORM_ADMIN') ? ' — 슈퍼관리자 귀속' : ''}</option>
                     ))}
                   </select>
                   <button

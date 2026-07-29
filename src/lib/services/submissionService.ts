@@ -10,7 +10,8 @@ import {
 import { isFormActiveNow } from '@/lib/services/formService';
 import { logAudit } from '@/lib/services/auditService';
 import { notifyFormOwner } from '@/lib/services/notificationService';
-import type { AdminUser } from '@/generated/prisma/client';
+import type { ActingUser } from '@/lib/auth';
+import { isPlatformAdmin } from '@/lib/auth';
 import type { FormField } from '@/components/builder/types';
 
 export async function listFormSubmissions(
@@ -108,7 +109,7 @@ export async function editSubmission(
   formId: string,
   submissionId: string,
   data: Record<string, unknown>,
-  actor: AdminUser
+  actor: ActingUser
 ) {
   await esUpdateSubmission(formId, submissionId, data);
   await logAudit({
@@ -130,7 +131,7 @@ const EXPORT_HARD_CAP = 5000;
 
 export async function exportFormSubmissions(
   formId: string,
-  actor: AdminUser,
+  actor: ActingUser,
   opts: { search?: string } = {}
 ) {
   const collected: Awaited<ReturnType<typeof esListSubmissions>>['items'] = [];
@@ -167,7 +168,7 @@ export async function exportFormSubmissions(
  * 공유) 양식지의 제출 데이터만 노출한다. 넉넉히 더 가져온 뒤(over-fetch) 필터링하므로
  * 정확한 limit을 보장하지는 않지만, 접근 불가 데이터가 새어나가지 않는 것이 우선이다.
  */
-export async function recentSubmissionsAcrossForms(limit = 10, actor?: AdminUser) {
+export async function recentSubmissionsAcrossForms(limit = 10, actor?: ActingUser) {
   const submissions = await esGetRecentSubmissions(limit * 5);
   const formIds = [...new Set(submissions.map((s) => s.formId))];
   const registries = await prisma.formRegistry.findMany({
@@ -176,7 +177,7 @@ export async function recentSubmissionsAcrossForms(limit = 10, actor?: AdminUser
   const idToRegistry = new Map(registries.map((r) => [r.id, r]));
 
   let accessibleFormIds: Set<string> | null = null;
-  if (actor && actor.role !== 'SUPER_ADMIN') {
+  if (actor && !isPlatformAdmin(actor)) {
     // fromUser가 권한을 받는 쪽(요청자), toUser가 승인하는 소유자 — 공유받은 건 fromUserId로 찾는다.
     const approvedShares = await prisma.shareRequest.findMany({
       where: { fromUserId: actor.id, status: 'APPROVED', formId: { in: formIds } },

@@ -1,7 +1,8 @@
 import { createHash, randomBytes } from 'crypto';
 import { prisma } from '@/lib/db';
 import { logAudit } from '@/lib/services/auditService';
-import type { AdminUser, ApiKey, ApiScope } from '@/generated/prisma/client';
+import type { ApiKey, ApiScope } from '@/generated/prisma/client';
+import type { ActingUser } from '@/lib/auth';
 
 /**
  * 외부 연동용 API 키 관리.
@@ -31,7 +32,7 @@ export async function createApiKey(
     rateLimitPerMin?: number;
     expiresAt?: Date | null;
   },
-  actor: AdminUser
+  actor: ActingUser
 ): Promise<CreateApiKeyResult> {
   const plaintextKey = `${KEY_PREFIX}${randomBytes(24).toString('base64url')}`;
   const record = await prisma.apiKey.create({
@@ -66,7 +67,7 @@ export async function listApiKeys(formId: string) {
   });
 }
 
-export async function revokeApiKey(id: string, actor: AdminUser) {
+export async function revokeApiKey(id: string, actor: ActingUser) {
   const key = await prisma.apiKey.update({
     where: { id },
     data: { revokedAt: new Date() },

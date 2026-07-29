@@ -21,9 +21,29 @@ datasource db {
   provider = "postgresql"
 }
 
-enum AdminRole {
-  ADMIN
-  SUPER_ADMIN
+// 사용자 역할 — 응답자와 관리자는 별개의 사람이 아니다(총무팀 담당자도 인사팀 설문엔
+// 응답자다). 그래서 계정 테이블을 나누지 않고 User 하나에 역할을 여러 개 부여한다.
+//   Guest 는 별도 역할이 아니라 "인증되지 않은 접근"을 뜻하므로 여기에 없다.
+enum RoleType {
+  MEMBER // 임직원 — 응답, 마이페이지
+  AUTHOR // 양식 제작자 — 양식 CRUD, 자기 양식 데이터
+  PLATFORM_ADMIN // 플랫폼 관리자 — 정책·계정·거버넌스
+}
+
+// 계정 상태 — 퇴사자와 정지 계정은 다르게 다뤄야 한다.
+// 퇴사자는 로그인만 막고 과거 응답·소유 이력은 보존해야 하며(감사/데이터베이스제작자 권리),
+// 정지는 제재이므로 해제될 수 있다. 불리언 하나로는 이 둘이 구분되지 않는다.
+enum UserStatus {
+  ACTIVE
+  SUSPENDED // 제재로 인한 정지
+  LEFT // 퇴사/이탈 — LDAP 동기화에서 사라진 경우 포함
+}
+
+// 계정 출처 — LDAP 동기화 계정은 이름/부서 등을 로컬에서 수정해도 다음 동기화 때
+// 덮어써지므로, 화면에서 편집 가능 여부를 가르기 위해 구분한다.
+enum UserSource {
+  LOCAL
+  LDAP
 }
 
 enum FormStatus {
@@ -59,26 +79,65 @@ enum AuditSeverity {
   critical
 }
 
-model AdminUser {
-  id        String    @id @default(cuid())
-  email     String    @unique
-  name      String
-  password  String
-  role      AdminRole @default(ADMIN)
-  orgName   String?
-  // 계정 정지(제재) — 슈퍼관리자가 무단 개인정보 수집 등을 이유로 관리자 활동을 막을 때 false로.
-  isActive  Boolean   @default(true)
-  // 대량 추출(CSV) 허용 여부 — 슈퍼관리자가 개인적 유용 등을 우려해 개별 관리자 단위로 제한할 수 있다.
+model User {
+  id       String @id @default(cuid())
+  email    String @unique
+  name     String
+  // 로컬 계정의 비밀번호 해시. LDAP 계정은 원격에서 인증하므로 사용하지 않는다.
+  password String?
+
+  // 조직 정보 — 부서별 코호트 분석, 소수 응답 보호(k-익명성) 임계값, 부서 예산의 기준.
+  employeeNo String? @unique // 사번 — LDAP/인사시스템 연동 키
+  department String?
+  position   String?
+
+  status UserStatus @default(ACTIVE)
+  source UserSource @default(LOCAL)
+  // LDAP 계정의 원본 식별자 — 이름/부서가 바뀌어도 같은 사람임을 추적한다.
+  ldapDn String? @unique
+  lastSyncedAt DateTime?
+
+  // 대량 추출(CSV) 허용 여부 — 슈퍼관리자가 개인적 유용 등을 우려해 개별 제한할 수 있다.
   // false이면 /submissions/export 요청이 거부된다 (src/lib/services/submissionService.ts).
   canBulkExport Boolean @default(true)
-  createdAt DateTime  @default(now())
 
-  formsOwned            FormRegistry[]       @relation("FormOwner")
-  shareRequestsSent     ShareRequest[]       @relation("ShareRequestFrom")
-  shareRequestsReceived ShareRequest[]       @relation("ShareRequestTo")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  lastLoginAt DateTime?
+
+  roles                 UserRole[]
+  formsOwned            FormRegistry[]      @relation("FormOwner")
+  shareRequestsSent     ShareRequest[]      @relation("ShareRequestFrom")
+  shareRequestsReceived ShareRequest[]      @relation("ShareRequestTo")
   notifications         AdminNotification[]
 
-  @@map("admin_users")
+  @@index([department])
+  @@index([source, status])
+  @@map("users")
+}
+
+// 다중 역할 + 양식 단위 위임.
+// scopeFormId를 지정하면 해당 양식에서만 유효한 권한이 되어, 담당자 인수인계나
+// 휴가 대행을 expiresAt과 함께 표현할 수 있다.
+model UserRole {
+  id     String   @id @default(cuid())
+  userId String
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   RoleType
+
+  scopeFormId String?
+  scopeForm   FormRegistry? @relation(fields: [scopeFormId], references: [id], onDelete: Cascade)
+
+  // 부여자는 email로 남긴다 — 부여자 계정이 삭제되어도 이력이 보존되어야 한다.
+  grantedBy String
+  grantedAt DateTime  @default(now())
+  // 한시적 위임. 만료된 행은 권한 없음으로 취급하되 감사 이력을 위해 삭제하지 않는다.
+  expiresAt DateTime?
+
+  @@unique([userId, role, scopeFormId])
+  @@index([userId])
+  @@index([scopeFormId])
+  @@map("user_roles")
 }
 
 // 폼의 "운영" 측면(정형) — 실제 제목/설명/필드 구성(비정형)은 Elasticsearch 문서를 참고.
@@ -86,7 +145,7 @@ model FormRegistry {
   id              String     @id // 비즈니스 키: "f-101" 등. ES 문서 id와 동일하게 유지.
   status          FormStatus @default(OPEN)
   ownerId         String?
-  owner           AdminUser? @relation("FormOwner", fields: [ownerId], references: [id])
+  owner           User?      @relation("FormOwner", fields: [ownerId], references: [id])
   // 운영 서버 기본 배포 URL — "/q/{id}" 고정값. 관리자 화면에서 수정/삭제할 수 없도록
   // API 계층(formService)에서 보호하고, 별도 활성화 기간만 이 레코드로 제어한다.
   deployUrl       String?
@@ -108,6 +167,7 @@ model FormRegistry {
   auditLogs     AuditLog[]
   notifications AdminNotification[]
   apiKeys       ApiKey[]
+  scopedRoles   UserRole[]
 
   @@map("form_registry")
 }
@@ -157,7 +217,7 @@ model AuditLog {
 model AdminNotification {
   id        String        @id @default(cuid())
   userId    String
-  user      AdminUser     @relation(fields: [userId], references: [id])
+  user      User          @relation(fields: [userId], references: [id])
   formId    String?
   form      FormRegistry? @relation(fields: [formId], references: [id])
   type      String // 'ANOMALY' | 'SHARE_REQUEST' | 'OWNERSHIP_CHANGE' 등
@@ -182,14 +242,70 @@ model SystemConfig {
   @@map("system_config")
 }
 
+// LDAP 서버 접속 암호화 방식.
+//   NONE     : 평문(389). 사내 폐쇄망이 아니면 사용하지 말 것 — 자격증명이 그대로 흐른다.
+//   LDAPS    : 전용 SSL 포트(636)로 처음부터 암호화.
+//   STARTTLS : 389로 연결한 뒤 TLS로 승격.
+enum LdapEncryption {
+  NONE
+  LDAPS
+  STARTTLS
+}
+
+// LDAP(Active Directory 포함) 연동 설정 — 싱글턴.
+//
+// 슈퍼관리자 시스템 환경 설정 화면에서만 수정 가능하며, bindPassword는 평문으로 저장하지
+// 않고 AES-256-GCM으로 암호화해 보관한다(src/lib/crypto.ts). 화면에도 다시 노출하지 않는다.
+model LdapConfig {
+  id      String  @id @default("default")
+  enabled Boolean @default(false)
+
+  // ── 연결 ──
+  host       String?
+  port       Int            @default(389)
+  encryption LdapEncryption @default(STARTTLS)
+  // 사내 자체서명 인증서를 쓰는 경우에만 false. 운영에서 끄면 중간자 공격에 노출된다.
+  verifyCert Boolean        @default(true)
+  timeoutMs  Int            @default(5000)
+
+  // ── 검색용 바인딩 계정 ──
+  bindDn                String?
+  bindPasswordEncrypted String? // AES-256-GCM 암호문. 절대 평문 저장/응답 금지.
+
+  // ── 사용자 검색 ──
+  baseDn           String?
+  userSearchFilter String  @default("(&(objectClass=person)(uid={username}))")
+  userSearchScope  String  @default("sub") // base | one | sub
+
+  // ── 속성 매핑 (LDAP 속성명 → User 필드) ──
+  attrEmail      String  @default("mail")
+  attrName       String  @default("cn")
+  attrEmployeeNo String? @default("employeeNumber")
+  attrDepartment String? @default("departmentNumber")
+  attrPosition   String? @default("title")
+
+  // ── 동기화 정책 ──
+  // 동기화로 새로 만들어진 계정에 기본 부여할 역할.
+  defaultRole RoleType @default(MEMBER)
+  // LDAP 검색 결과에서 사라진 계정 처리 — 삭제하지 않고 LEFT로 전환한다.
+  // 과거 응답·소유 이력을 보존해야 하기 때문(감사/데이터베이스제작자 권리).
+  deactivateMissing Boolean @default(true)
+
+  lastSyncAt      DateTime?
+  lastSyncResult  String? // 마지막 동기화 요약 (JSON 문자열)
+  updatedAt       DateTime @updatedAt
+
+  @@map("ldap_config")
+}
+
 model ShareRequest {
   id         String             @id @default(cuid())
   formId     String
   form       FormRegistry       @relation(fields: [formId], references: [id])
   fromUserId String
-  fromUser   AdminUser          @relation("ShareRequestFrom", fields: [fromUserId], references: [id])
+  fromUser   User               @relation("ShareRequestFrom", fields: [fromUserId], references: [id])
   toUserId   String
-  toUser     AdminUser          @relation("ShareRequestTo", fields: [toUserId], references: [id])
+  toUser     User               @relation("ShareRequestTo", fields: [toUserId], references: [id])
   status     ShareRequestStatus @default(PENDING)
   createdAt  DateTime           @default(now())
 

@@ -70,23 +70,14 @@ async function ensureIndices() {
 // 실제 운영 관리자 계정은 로그인 시(getCurrentAdmin) 자동으로 생성되며, 새로 만드는
 // 양식지는 그 계정이 직접 소유하게 된다 — 지금 시드 시점에는 최고관리자 계정 하나만
 // 필요하다.
-const USERS = [
-  { email: 'ralfkang@ktl.re.kr', name: '최고관리자', role: 'SUPER_ADMIN' as const },
+const USERS: Array<{ email: string; name: string; roles: Array<'MEMBER' | 'AUTHOR' | 'PLATFORM_ADMIN'> }> = [
+  {
+    email: 'ralfkang@ktl.re.kr',
+    name: '최고관리자',
+    roles: ['PLATFORM_ADMIN', 'AUTHOR', 'MEMBER'],
+  },
 ];
 
-// 과거 시드가 만들어 둔 목업 계정 목록. 시드에서 빼는 것만으로는 이미 DB에 들어간
-// 레코드가 사라지지 않으므로, 아래 계정들은 명시적으로 삭제한다(소유 양식지는 먼저
-// 최고관리자에게 귀속시킨다). 실제 운영 계정을 실수로 지우지 않도록 "이 목록에
-// 있는 이메일만" 대상으로 한다.
-const LEGACY_MOCK_EMAILS = [
-  'admin@company.com',
-  'marketing@company.com',
-  'hr@company.com',
-  'facilities@company.com',
-  'it-support@company.com',
-  'qa@company.com',
-  'design@company.com',
-];
 
 // -----------------------------------------------------------------------
 // 2) 비정형 데이터: 폼 필드 구성 + 샘플 제출 데이터
@@ -228,39 +219,32 @@ async function main() {
   console.log('[seed] Elasticsearch 인덱스 확인/생성...');
   await ensureIndices();
 
-  console.log('[seed] 관리자 계정 생성...');
+  console.log('[seed] 슈퍼관리자 계정 생성...');
+  // DB를 새 스키마로 재생성하는 전제이므로, 과거 목업 계정 정리 로직은 두지 않는다.
+  // 실제 임직원 계정은 LDAP 동기화(슈퍼관리자 > 시스템 환경 설정)로 들어온다.
   const userByEmail = new Map<string, { id: string }>();
   for (const u of USERS) {
-    const user = await prisma.adminUser.upsert({
+    const user = await prisma.user.upsert({
       where: { email: u.email },
-      update: { role: u.role },
-      create: { email: u.email, name: u.name, password: 'unset', role: u.role },
+      update: { name: u.name, source: 'LOCAL' },
+      create: { email: u.email, name: u.name, source: 'LOCAL' },
     });
     userByEmail.set(u.email, user);
-  }
 
-  const superAdmin = userByEmail.get('ralfkang@ktl.re.kr')!;
-
-  // 과거 시드가 남겨둔 목업 계정 정리 — 소유 양식지를 최고관리자에게 귀속시킨 뒤 삭제한다.
-  // (참조 무결성 때문에 공유요청/알림을 먼저 지운다.)
-  const legacyUsers = await prisma.adminUser.findMany({
-    where: { email: { in: LEGACY_MOCK_EMAILS } },
-    select: { id: true, email: true },
-  });
-  if (legacyUsers.length > 0) {
-    const legacyIds = legacyUsers.map((u) => u.id);
-    console.log(`[seed] 목업 계정 ${legacyUsers.length}개 정리 (소유 양식지는 최고관리자로 귀속)...`);
-    await prisma.$transaction([
-      prisma.formRegistry.updateMany({
-        where: { ownerId: { in: legacyIds } },
-        data: { ownerId: superAdmin.id },
-      }),
-      prisma.shareRequest.deleteMany({
-        where: { OR: [{ fromUserId: { in: legacyIds } }, { toUserId: { in: legacyIds } }] },
-      }),
-      prisma.adminNotification.deleteMany({ where: { userId: { in: legacyIds } } }),
-      prisma.adminUser.deleteMany({ where: { id: { in: legacyIds } } }),
-    ]);
+    // 슈퍼관리자는 세 역할을 모두 갖는다 — 플랫폼을 운영하면서 양식도 만들고,
+    // 다른 부서 설문에는 응답자로 참여하기 때문이다.
+    for (const role of u.roles) {
+      // scopeFormId가 null인 복합 유니크는 Prisma where 절에서 다루기 번거로워
+      // 존재 확인 후 생성하는 방식으로 처리한다(시드는 동시성 이슈가 없다).
+      const existingRole = await prisma.userRole.findFirst({
+        where: { userId: user.id, role, scopeFormId: null },
+      });
+      if (!existingRole) {
+        await prisma.userRole.create({
+          data: { userId: user.id, role, grantedBy: 'db-seed-script' },
+        });
+      }
+    }
   }
 
   console.log('[seed] 폼 레지스트리(정형) + 폼 템플릿/제출데이터(비정형) 생성...');

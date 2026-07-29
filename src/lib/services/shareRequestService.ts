@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { logAudit } from '@/lib/services/auditService';
-import type { AdminUser } from '@/generated/prisma/client';
+import type { ActingUser } from '@/lib/auth';
+import { isPlatformAdmin } from '@/lib/auth';
 
 const withUsers = {
   fromUser: { select: { id: true, name: true, email: true } },
@@ -24,7 +25,7 @@ export async function listShareRequests(userId: string) {
   return { received, sent };
 }
 
-export async function createShareRequest(formId: string, requester: AdminUser) {
+export async function createShareRequest(formId: string, requester: ActingUser) {
   const form = await prisma.formRegistry.findUnique({
     where: { id: formId },
     select: { ownerId: true },
@@ -42,10 +43,10 @@ export async function createShareRequest(formId: string, requester: AdminUser) {
  * 소유자(또는 슈퍼관리자)가 승인 대기 없이 곧바로 다른 관리자에게 제출 데이터 조회
  * 권한을 부여한다 — URL 관리 화면의 "설정 > 공유/이관" 기능에서 사용.
  */
-export async function createDirectShare(formId: string, granteeUserId: string, actor: AdminUser) {
+export async function createDirectShare(formId: string, granteeUserId: string, actor: ActingUser) {
   const form = await prisma.formRegistry.findUnique({ where: { id: formId }, select: { ownerId: true } });
   if (!form?.ownerId) throw new Error('FORM_OWNER_NOT_FOUND');
-  if (actor.role !== 'SUPER_ADMIN' && actor.id !== form.ownerId) throw new Error('FORBIDDEN');
+  if (!isPlatformAdmin(actor) && actor.id !== form.ownerId) throw new Error('FORBIDDEN');
   if (granteeUserId === form.ownerId) throw new Error('CANNOT_SHARE_WITH_OWNER');
 
   const created = await prisma.shareRequest.create({
@@ -67,7 +68,7 @@ export async function createDirectShare(formId: string, granteeUserId: string, a
 export async function updateShareRequestStatus(
   id: string,
   status: 'APPROVED' | 'REJECTED',
-  actor: AdminUser
+  actor: ActingUser
 ) {
   const request = await prisma.shareRequest.update({
     where: { id },
