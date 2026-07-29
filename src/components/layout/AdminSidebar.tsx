@@ -17,6 +17,7 @@ import {
   Network
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
+import { AccountMenu } from './AccountMenu';
 
 interface AdminSidebarProps {
   role?: 'admin' | 'super-admin';
@@ -64,7 +65,10 @@ export function AdminSidebar({ role = 'admin' }: AdminSidebarProps) {
   };
 
   return (
-    <div className="w-64 bg-slate-900 text-white flex flex-col hidden md:flex shrink-0 min-h-screen">
+    // h-screen + sticky: min-h-screen이면 사이드바가 본문 길이만큼 늘어나 맨 아래 계정
+    // 메뉴·로그아웃이 스크롤 한참 밑으로 밀려 사실상 찾을 수 없게 된다. 뷰포트 높이로
+    // 고정하고 메뉴 영역만 내부 스크롤시킨다.
+    <div className="w-64 bg-slate-900 text-white flex flex-col hidden md:flex shrink-0 h-screen sticky top-0">
       <div className="p-6 border-b border-slate-800">
         <h2 className="text-xl font-bold flex items-center">
           <Shield className="w-6 h-6 mr-2 text-indigo-400" />
@@ -89,11 +93,16 @@ export function AdminSidebar({ role = 'admin' }: AdminSidebarProps) {
         </div>
 
       </nav>
-      <div className="p-4 border-t border-slate-800 flex items-center justify-between">
-        <Link href="/legal/database-rights" className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
-          데이터베이스제작자 권리 고지
-        </Link>
-        <NotificationBell />
+      <div className="border-t border-slate-800">
+        <div className="px-2 py-2 flex items-center justify-between">
+          <AccountMenu variant="dark" />
+          <NotificationBell />
+        </div>
+        <div className="px-4 pb-3">
+          <Link href="/legal/database-rights" className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
+            데이터베이스제작자 권리 고지
+          </Link>
+        </div>
       </div>
     </div>
   );

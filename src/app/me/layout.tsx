@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { LayoutDashboard, FileText, TrendingUp, Coins, LogOut, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, FileText, TrendingUp, Coins, ShieldCheck } from 'lucide-react';
+import { AccountMenu } from '@/components/layout/AccountMenu';
 
 /**
  * 임직원 전용 레이아웃.
@@ -36,9 +37,7 @@ export default function MemberLayout({ children }: { children: React.ReactNode }
               ))}
             </nav>
           </div>
-          <Link href="/login" className="text-sm text-slate-400 hover:text-slate-600 flex items-center gap-1">
-            <LogOut className="w-4 h-4" /> 로그아웃
-          </Link>
+          <AccountMenu variant="light" />
         </div>
       </header>
       <main className="max-w-5xl mx-auto px-6 py-8">{children}</main>
