@@ -221,6 +221,29 @@ export async function updateForm(
   const existing = await getFormTemplate(formId);
   if (!existing) return null;
 
+  // 🔴 확정된 양식지의 익명 플래그는 절대 바꿀 수 없다.
+  //   일반 → 익명: 이미 식별 저장된 과거 응답은 익명이 되지 않는다. "익명입니다"라는
+  //                안내가 거짓이 된다.
+  //   익명 → 일반: 익명을 믿고 답한 내용이 소급해서 식별 대상이 된다. 신뢰 배반.
+  // 다른 속성은 schemaVersion만 올리면 되지만, 익명 여부는 응답자와의 약속이므로
+  // 되돌릴 수 없다. 바꾸려면 새 양식을 만들어야 한다.
+  //
+  // 이 검사는 반드시 저장(upsertFormTemplate) "이전"에 해야 한다 — 뒤에 두면
+  // 오류를 던지기 전에 템플릿이 이미 덮어써져, 409를 반환하면서도 익명 설정이
+  // 풀려버린다(실제로 그렇게 동작했다).
+  if (input.fields !== undefined) {
+    const registryBefore = await prisma.formRegistry.findUniqueOrThrow({ where: { id: formId } });
+    if (registryBefore.lifecycle === 'PUBLISHED') {
+      const beforeAnon = new Map(existing.fields.map((f) => [f.id, !!f.anonymous]));
+      const changed = input.fields.filter(
+        (f) => beforeAnon.has(f.id) && beforeAnon.get(f.id) !== !!f.anonymous
+      );
+      if (changed.length > 0) {
+        throw new Error('ANONYMITY_LOCKED');
+      }
+    }
+  }
+
   const updated = {
     ...existing,
     title: input.title ?? existing.title,

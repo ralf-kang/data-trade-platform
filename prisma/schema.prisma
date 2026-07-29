@@ -51,6 +51,19 @@ enum FormStatus {
   CLOSED
 }
 
+// 양식지가 요구하는 응답자 신원 수준.
+//   ANONYMOUS     : 신원을 수집하지 않는다(기존 동작 = 기본값).
+//   IDENTIFIED    : 개인화 링크 토큰 필수.
+//   AUTHENTICATED : 로그인 필수.
+//   MIXED         : 토큰이 있으면 식별, 없으면 익명으로 수집.
+//                   공용 QR(익명)과 개인 링크(식별)를 함께 운영할 때 쓴다.
+enum IdentityMode {
+  ANONYMOUS
+  IDENTIFIED
+  AUTHENTICATED
+  MIXED
+}
+
 // 양식지 설계 단계 — 외부 API 연동의 "계약(contract)"이 언제부터 유효한지를 가른다.
 //   DRAFT     : 아직 만드는 중. 필드 구성이 언제든 바뀔 수 있으므로 외부 API 쓰기를 막는다.
 //   PUBLISHED : 확정됨. 이 시점의 필드 구성이 API 계약이 되고, 외부 시스템이 연동을 시작할 수 있다.
@@ -106,6 +119,7 @@ model User {
   lastLoginAt DateTime?
 
   roles                 UserRole[]
+  respondentTokens      RespondentToken[]
   formsOwned            FormRegistry[]      @relation("FormOwner")
   shareRequestsSent     ShareRequest[]      @relation("ShareRequestFrom")
   shareRequestsReceived ShareRequest[]      @relation("ShareRequestTo")
@@ -158,6 +172,10 @@ model FormRegistry {
   // 계약 변경을 감지하는 기준값이며, API 응답 헤더(X-Form-Schema-Version)로도 노출한다.
   schemaVersion   Int        @default(1)
   publishedAt     DateTime?
+  // 이 양식이 요구하는 응답자 신원 수준. 기본 ANONYMOUS이므로 기존 양식의 동작은 바뀌지 않는다.
+  identityMode    IdentityMode @default(ANONYMOUS)
+  // 익명 문항 결과를 공개하기 위한 최소 응답 수(2단계). null이면 시스템 기본값을 따른다.
+  anonymityThreshold Int?
   viewCount       Int        @default(0)
   submissionCount Int        @default(0)
   createdAt       DateTime   @default(now())
@@ -168,8 +186,72 @@ model FormRegistry {
   notifications AdminNotification[]
   apiKeys       ApiKey[]
   scopedRoles   UserRole[]
+  respondentTokens RespondentToken[]
+  anonymousBuffer  AnonymousResponseBuffer[]
 
   @@map("form_registry")
+}
+
+// 개인화 응답 링크 — 로그인을 강제하지 않으면서 응답자를 식별하기 위한 토큰.
+//
+// 원문은 저장하지 않는다(ApiKey와 동일 원칙). 유출 시 피해를 줄이기 위해 SHA-256 해시만
+// 보관하고, 목록에서 식별할 수 있도록 접두 일부만 평문으로 남긴다.
+//
+// 중요: 토큰이 URL 쿼리스트링에 실려 오면 브라우저 히스토리·Referer·웹서버 액세스 로그에
+// 남는다. 그래서 응답 화면은 토큰을 받는 즉시 응답 세션 쿠키로 교환하고 URL에서 제거한다
+// (src/lib/respondent.ts).
+model RespondentToken {
+  id          String @id @default(cuid())
+  tokenHash   String @unique // SHA-256(원문)
+  tokenPrefix String // 접두 12자 — 목록 식별용
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  formId String
+  form   FormRegistry @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  // 만료는 필수다 — 무기한 토큰은 유출 시 영구적인 위험이 된다.
+  expiresAt DateTime
+  // 기본 false 권장: 제출 도중 창을 닫으면 다시 못 들어오게 되어 재발급 요청이 폭주한다.
+  // 중복 제출 방지는 회차별 참여 기록(3단계)으로 처리하는 편이 안전하다.
+  singleUse Boolean   @default(false)
+  usedAt    DateTime?
+  revokedAt DateTime?
+
+  // 발송/열람 추적 — 응답률이 낮을 때 원인(미발송/미열람/이탈)을 가른다.
+  issuedBy    String
+  issuedAt    DateTime  @default(now())
+  deliveredAt DateTime?
+  openedAt    DateTime?
+
+  @@index([userId, formId])
+  @@index([formId, expiresAt])
+  @@map("respondent_tokens")
+}
+
+// 익명 응답의 임시 보관소(2단계).
+//
+// 익명 문항 응답을 즉시 색인하지 않고 여기에 모았다가 임계값(k)에 도달하면 순서를 섞어
+// 한꺼번에 적재한다. 즉시 쓰면 "저장 순서 = 응답 순서"가 되어, 식별 문서의 제출 시각과
+// 나란히 놓는 것만으로 누가 무엇을 답했는지 복원되기 때문이다.
+//
+// payload는 암호화해 둔다 — 버퍼에 머무는 짧은 시간에도 DB를 직접 들여다보는 것만으로는
+// 내용을 읽을 수 없어야 한다.
+model AnonymousResponseBuffer {
+  id     String       @id @default(cuid())
+  formId String
+  form   FormRegistry @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  // AES-256-GCM 암호문 (src/lib/crypto.ts)
+  payloadEncrypted String
+  // 절삭된 제출 시각(기본 1시간 단위). 정확한 시각은 저장하지 않는다.
+  bucketAt      DateTime
+  schemaVersion Int
+
+  createdAt DateTime @default(now())
+
+  @@index([formId])
+  @@map("anonymous_response_buffer")
 }
 
 // 외부 시스템이 제출 데이터를 대량 조회/입력할 때 사용하는 API 키.
@@ -237,6 +319,9 @@ model SystemConfig {
   // QR 코드 / 배포 URL 안내에 사용할 운영 서버의 공개 기본 URL (예: https://forms.company.com).
   // 미설정 시 요청 Origin으로 대체한다.
   publicBaseUrl String?
+  // 익명 응답 결과를 공개하기 위한 최소 응답 수(2단계). 양식별로 override 가능.
+  // 이보다 적으면 소수 응답의 조합으로 개인이 특정될 수 있으므로 조회를 막는다.
+  defaultAnonymityThreshold Int @default(5)
   updatedAt     DateTime @updatedAt
 
   @@map("system_config")

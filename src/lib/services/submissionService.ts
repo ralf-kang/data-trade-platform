@@ -8,6 +8,8 @@ import {
   updateSubmission as esUpdateSubmission,
 } from '@/lib/elasticsearch';
 import { isFormActiveNow } from '@/lib/services/formService';
+import { bufferAnonymousPart, splitSubmission } from '@/lib/services/anonymityService';
+import type { RespondentIdentity } from '@/lib/respondent';
 import { logAudit } from '@/lib/services/auditService';
 import { notifyFormOwner } from '@/lib/services/notificationService';
 import type { ActingUser } from '@/lib/auth';
@@ -59,7 +61,11 @@ function detectAnomalies(fields: FormField[], data: Record<string, unknown>): st
   return issues;
 }
 
-export async function submitFormResponse(formId: string, data: Record<string, unknown>) {
+export async function submitFormResponse(
+  formId: string,
+  data: Record<string, unknown>,
+  identity?: RespondentIdentity
+) {
   const registry = await prisma.formRegistry.findUnique({ where: { id: formId } });
   if (!registry) throw new Error('FORM_NOT_FOUND');
   if (
@@ -72,22 +78,61 @@ export async function submitFormResponse(formId: string, data: Record<string, un
     throw new Error('FORM_NOT_ACTIVE');
   }
 
+  const template = await getFormTemplate(formId);
+  const fields = template?.fields ?? [];
+
+  // 이상치 검증은 분할 "전" 전체 데이터로 수행한다 — 익명 문항도 형식 검증은 받아야 한다.
+  // 단, 로그·알림에 남길 수 있는 것은 일반 문항의 이상치뿐이다(아래 참조).
+  const anomalies = template ? detectAnomalies(fields, data) : [];
+
+  // 문항 단위 익명성(2단계): anonymous 플래그 기준으로 두 조각으로 나눈다.
+  // 분할은 반드시 서버에서 — 클라이언트가 두 요청으로 나누면 네트워크에서 상관관계가 샌다.
+  const { identified, anonymous, hasAnonymousFields } = splitSubmission(fields, data);
+
   const submissionId = `SUB-${randomUUID().slice(0, 8).toUpperCase()}`;
   const submittedAt = new Date().toISOString();
 
-  await esCreateSubmission({ formId, submissionId, submittedAt, data });
+  // 식별 문서 — 익명 문항이 전부여도 참여 사실은 남긴다(응답률·보상의 근거).
+  await esCreateSubmission({
+    formId,
+    submissionId,
+    submittedAt,
+    data: identified,
+    respondentId: identity?.user?.id,
+    identityLevel: identity?.level ?? 'ANONYMOUS',
+  });
+
+  // 익명 조각 — 즉시 색인하지 않고 버퍼로. k건이 모이면 셔플되어 적재된다.
+  if (hasAnonymousFields) {
+    await bufferAnonymousPart(formId, anonymous, registry.schemaVersion);
+  }
+
   await prisma.formRegistry
     .update({ where: { id: formId }, data: { submissionCount: { increment: 1 } } })
     .catch(() => undefined);
 
-  const template = await getFormTemplate(formId);
-  const anomalies = template ? detectAnomalies(template.fields, data) : [];
   if (anomalies.length > 0) {
+    // 익명 문항 이상치는 라벨·값·응답자를 로그에 남기면 익명성이 그대로 깨진다.
+    // 일반 문항 이상치만 상세를 남기고, 익명 문항은 건수만 집계한다.
+    const anonymousIds = new Set(fields.filter((f) => f.anonymous).map((f) => f.id));
+    const anonymousLabels = new Set(
+      fields.filter((f) => anonymousIds.has(f.id)).map((f) => f.label)
+    );
+    const identifiedAnomalies = anomalies.filter(
+      (msg) => ![...anonymousLabels].some((label) => msg.includes(label))
+    );
+    const anonAnomalyCount = anomalies.length - identifiedAnomalies.length;
+
+    const details = [
+      ...identifiedAnomalies,
+      ...(anonAnomalyCount > 0 ? [`익명 문항 ${anonAnomalyCount}건 형식 이상 (상세 비공개)`] : []),
+    ].join('; ');
+
     await logAudit({
       userEmail: 'system(public-submit)',
       action: 'DATA_ANOMALY',
       target: `Form [${formId}] Data [${submissionId}]`,
-      details: anomalies.join('; '),
+      details,
       severity: 'warning',
       formId,
     });
@@ -96,7 +141,7 @@ export async function submitFormResponse(formId: string, data: Record<string, un
         userId: registry.ownerId,
         formId,
         type: 'ANOMALY',
-        message: `[${template?.title ?? formId}] 제출 데이터(${submissionId})에서 이상치가 감지되었습니다: ${anomalies.join('; ')}`,
+        message: `[${template?.title ?? formId}] 제출 데이터(${submissionId})에서 이상치가 감지되었습니다: ${details}`,
         severity: 'warning',
       });
     }

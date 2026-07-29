@@ -40,13 +40,28 @@ export async function PUT(request: NextRequest, { params }: Params) {
   }
 
   const body = await request.json();
-  const form = await updateForm(
-    formId,
-    { title: body.title, description: body.description, fields: body.fields },
-    actor
-  );
-  if (!form) return NextResponse.json({ error: 'not found' }, { status: 404 });
-  return NextResponse.json({ form });
+  try {
+    const form = await updateForm(
+      formId,
+      { title: body.title, description: body.description, fields: body.fields },
+      actor
+    );
+    if (!form) return NextResponse.json({ error: 'not found' }, { status: 404 });
+    return NextResponse.json({ form });
+  } catch (err) {
+    if (err instanceof Error && err.message === 'ANONYMITY_LOCKED') {
+      return NextResponse.json(
+        {
+          error: 'ANONYMITY_LOCKED',
+          message:
+            '확정된 양식지의 익명 설정은 변경할 수 없습니다. 이미 응답한 분들과의 약속이기 때문입니다. ' +
+            '설정을 바꾸려면 양식지를 새로 만들어 주세요.',
+        },
+        { status: 409 }
+      );
+    }
+    throw err;
+  }
 }
 
 // 여러 운영 속성을 한 번에 다룬다:

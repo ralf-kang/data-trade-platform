@@ -18,6 +18,7 @@ export default elasticClient;
 export const INDEX_NAMES = {
   FORM_TEMPLATES: 'webreport-form-templates',
   SUBMISSIONS: 'webreport-submissions',
+  ANON_SUBMISSIONS: 'webreport-anon-submissions',
 };
 
 // ---------------------------------------------------------------------------
@@ -51,6 +52,26 @@ export interface SubmissionDocument {
   source?: 'web' | 'api';
   /** 입력 시점의 폼 스키마 버전 — 나중에 계약 변경 전/후 데이터를 구분할 수 있다. */
   schemaVersion?: number;
+  /** 응답자(1단계). null/누락이면 익명 응답 — 기존 데이터와의 호환을 위해 선택적이다. */
+  respondentId?: string;
+  /** 이 응답이 어떤 신원 수준으로 수집되었는지 — 사후 신뢰도 판단의 근거. */
+  identityLevel?: 'ANONYMOUS' | 'IDENTIFIED' | 'AUTHENTICATED';
+}
+
+/**
+ * 익명 문항 응답(2단계). 식별 문서와 결합할 수 있는 어떤 키도 갖지 않는다:
+ * id는 독립 난수, 시각은 절삭, 적재 순서는 버퍼에서 셔플된다.
+ */
+export interface AnonymousSubmissionDocument {
+  anonId: string;
+  formId: string;
+  /** 절삭된 시각(기본 1시간 단위). 정확한 제출 시각은 존재하지 않는다. */
+  bucketAt: string;
+  schemaVersion: number;
+  /** 익명 문항만 담긴다. respondentId·submissionId는 의도적으로 없다. */
+  data: Record<string, unknown>;
+  /** 임계값 미만 상태로 적재된 배치(양식 마감 시 잔여분) — 조회를 막는 근거. */
+  belowThreshold: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -80,7 +101,21 @@ const SUBMISSION_MAPPING = {
     externalId: { type: 'keyword' },
     source: { type: 'keyword' },
     schemaVersion: { type: 'integer' },
+    respondentId: { type: 'keyword' },
+    identityLevel: { type: 'keyword' },
     // col1, col2 ... 처럼 폼별로 늘어나는 응답 컬럼 — 동적 매핑.
+    data: { type: 'object', dynamic: true },
+  },
+} as const;
+
+const ANON_SUBMISSION_MAPPING = {
+  properties: {
+    anonId: { type: 'keyword' },
+    formId: { type: 'keyword' },
+    bucketAt: { type: 'date' },
+    schemaVersion: { type: 'integer' },
+    belowThreshold: { type: 'boolean' },
+    // 익명 문항 응답 — 폼별로 키가 달라지는 비정형 영역.
     data: { type: 'object', dynamic: true },
   },
 } as const;
@@ -106,6 +141,7 @@ export async function ensureIndices(): Promise<void> {
       for (const [index, mappings] of [
         [INDEX_NAMES.FORM_TEMPLATES, FORM_TEMPLATE_MAPPING],
         [INDEX_NAMES.SUBMISSIONS, SUBMISSION_MAPPING],
+        [INDEX_NAMES.ANON_SUBMISSIONS, ANON_SUBMISSION_MAPPING],
       ] as const) {
         const exists = await elasticClient.indices.exists({ index });
         if (!exists) {
@@ -240,6 +276,98 @@ export async function bulkCreateSubmissions(docs: SubmissionDocument[]): Promise
     const firstError = res.items.find((i) => i.index?.error)?.index?.error;
     throw new Error(`bulk index failed: ${firstError?.reason ?? 'unknown'}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// 익명 제출(2단계) — 쓰기는 flush 배치에서만, 읽기는 집계 전용
+// ---------------------------------------------------------------------------
+
+/** flush 배치 전용 — 셔플된 익명 문서 묶음을 한 번에 적재한다. */
+export async function bulkCreateAnonSubmissions(docs: AnonymousSubmissionDocument[]): Promise<void> {
+  if (docs.length === 0) return;
+  await ensureIndices();
+  const operations = docs.flatMap((doc) => [
+    { index: { _index: INDEX_NAMES.ANON_SUBMISSIONS, _id: doc.anonId } },
+    doc,
+  ]);
+  const res = await elasticClient.bulk({ operations, refresh: 'wait_for' });
+  if (res.errors) {
+    const firstError = res.items.find((i) => i.index?.error)?.index?.error;
+    throw new Error(`anon bulk index failed: ${firstError?.reason ?? 'unknown'}`);
+  }
+}
+
+/**
+ * 익명 응답 건수 — k-익명성 게이트의 판정 근거.
+ * belowThreshold로 적재된 배치(마감 시 잔여분)는 애초에 공개 대상이 아니므로 제외한다.
+ */
+export async function countAnonSubmissions(formId: string): Promise<number> {
+  await ensureIndices();
+  const res = await elasticClient.count({
+    index: INDEX_NAMES.ANON_SUBMISSIONS,
+    query: {
+      bool: {
+        filter: [{ term: { formId } }, { term: { belowThreshold: false } }],
+      },
+    },
+  });
+  return res.count;
+}
+
+/**
+ * 익명 문항 집계 — 개별 문서를 반환하는 함수는 의도적으로 만들지 않는다.
+ * (선택지 문항: terms 집계 / 자유응답: 셔플된 값 목록)
+ *
+ * 자유응답 값 목록도 여기서 셔플해 반환한다 — 색인 순서조차 노출하지 않기 위함.
+ */
+export async function aggregateAnonField(
+  formId: string,
+  fieldId: string
+): Promise<{ buckets: Array<{ key: string; count: number }> }> {
+  await ensureIndices();
+  const res = await elasticClient.search({
+    index: INDEX_NAMES.ANON_SUBMISSIONS,
+    size: 0,
+    query: {
+      bool: {
+        filter: [{ term: { formId } }, { term: { belowThreshold: false } }],
+      },
+    },
+    aggs: {
+      values: {
+        terms: { field: `data.${fieldId}.keyword`, size: 50, missing: '(무응답)' },
+      },
+    },
+  });
+  type Bucket = { key: string; doc_count: number };
+  const agg = res.aggregations?.values as { buckets: Bucket[] } | undefined;
+  return {
+    buckets: (agg?.buckets ?? []).map((b) => ({ key: String(b.key), count: b.doc_count })),
+  };
+}
+
+/** 자유응답 익명 문항 — 셔플된 값 배열만 반환(메타데이터 일절 없음). */
+export async function listAnonFreeText(formId: string, fieldId: string, max = 500): Promise<string[]> {
+  await ensureIndices();
+  const res = await elasticClient.search<AnonymousSubmissionDocument>({
+    index: INDEX_NAMES.ANON_SUBMISSIONS,
+    size: max,
+    _source: [`data.${fieldId}`],
+    query: {
+      bool: {
+        filter: [{ term: { formId } }, { term: { belowThreshold: false } }],
+      },
+    },
+  });
+  const values = res.hits.hits
+    .map((h) => h._source?.data?.[fieldId])
+    .filter((v): v is string => typeof v === 'string' && v.length > 0);
+  // Fisher–Yates 셔플 — 반환 순서가 색인 순서를 암시하지 않게 한다.
+  for (let i = values.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [values[i], values[j]] = [values[j], values[i]];
+  }
+  return values;
 }
 
 export interface CursorListParams {

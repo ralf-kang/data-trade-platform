@@ -8,7 +8,7 @@ import {
   CheckSquare, Calendar, Upload, PenTool,
   Image as ImageIcon, Images, Video, Table, FileBox, MessageSquare, Link as LinkIcon,
   Layers, BellOff, ShieldAlert, Database, FileSpreadsheet, Save, ArrowUp, ArrowDown, Trash2,
-  Smartphone, Monitor, Globe, Regex, MapPin, Star, GripHorizontal, Sparkles, Plus, X, SlidersHorizontal
+  Smartphone, Monitor, Globe, Regex, MapPin, Star, GripHorizontal, Sparkles, Plus, X, SlidersHorizontal, Lock
 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import AiAutoGenerator from './AiAutoGenerator';
@@ -197,7 +197,8 @@ export default function FormBuilder() {
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
-        alert('저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
+        const json = await res.json().catch(() => ({}));
+        alert(json.message ?? '저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
         return;
       }
       const { form } = await res.json();
@@ -400,6 +401,7 @@ export default function FormBuilder() {
             field={activeField}
             onChange={(updates) => updateField(activeField.id, updates)}
             onClose={() => setActiveFieldId(null)}
+            anonymityLocked={lifecycle === 'PUBLISHED'}
           />
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-center p-8 text-gray-400">
@@ -514,10 +516,13 @@ function FieldDetailPanel({
   field,
   onChange,
   onClose,
+  anonymityLocked,
 }: {
   field: FormField;
   onChange: (updates: Partial<FormField>) => void;
   onClose: () => void;
+  /** 확정된 양식지에서는 익명 설정을 바꿀 수 없다 — 응답자와의 약속이기 때문. */
+  anonymityLocked: boolean;
 }) {
   const fieldTypeInfo = FIELD_TYPES.find((t) => t.type === field.type);
 
@@ -636,6 +641,39 @@ function FieldDetailPanel({
           />
         </div>
       )}
+
+      {/* 문항 단위 익명성 — 마스킹과는 전혀 다른 장치라 별도 블록으로 둔다.
+          마스킹은 "화면에서 가리기"지만, 익명은 "응답자와의 연결 자체를 만들지 않기"다. */}
+      <div className={`p-3 rounded border ${field.anonymous ? 'bg-slate-900 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
+        <label className={`flex items-start gap-2 text-sm ${anonymityLocked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'} ${field.anonymous ? 'text-slate-100' : 'text-slate-700'}`}>
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={!!field.anonymous}
+            disabled={anonymityLocked}
+            onChange={(e) => onChange({ anonymous: e.target.checked })}
+          />
+          <span>
+            <span className="font-bold flex items-center gap-1">
+              <Lock className="w-3.5 h-3.5" /> 익명 문항으로 저장
+            </span>
+            <span className={`block text-xs mt-1 ${field.anonymous ? 'text-slate-300' : 'text-slate-500'}`}>
+              응답자와 연결되지 않게 분리 저장합니다. 제작자·관리자 모두 개별 응답을 볼 수 없고
+              집계만 조회할 수 있으며, 응답자 본인도 제출 후 수정·삭제할 수 없습니다.
+            </span>
+          </span>
+        </label>
+        {anonymityLocked && (
+          <p className="mt-2 text-xs text-amber-600">
+            ⚠ 확정된 양식지는 익명 설정을 바꿀 수 없습니다. 이미 응답한 분들과의 약속이기 때문입니다.
+          </p>
+        )}
+        {field.anonymous && !anonymityLocked && (
+          <p className="mt-2 text-xs text-amber-500">
+            ⚠ 확정(배포) 이후에는 이 설정을 되돌릴 수 없습니다.
+          </p>
+        )}
+      </div>
 
       <div className="p-3 bg-gray-50 border border-gray-200 rounded">
         <label className="flex items-center space-x-2 text-sm text-gray-700">

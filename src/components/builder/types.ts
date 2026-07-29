@@ -24,6 +24,13 @@ export interface FormField {
   options?: string[]; // for select, radio, checkbox
   regexPattern?: string; // 전화번호, 주민번호, 사업자번호 등 검증용
   privacyMasking?: boolean; // 비식별화 (마스킹) 플래그
+  /**
+   * 이 문항의 응답을 응답자와 분리해 익명 저장한다(2단계).
+   * true인 문항은 식별 문서에 저장되지 않고 별도 인덱스에 셔플 적재되며,
+   * 양식이 확정(PUBLISHED)된 뒤에는 값을 바꿀 수 없다 — 이미 응답한 사람들과의
+   * 약속이 되기 때문이다 (formService.updateForm에서 강제).
+   */
+  anonymous?: boolean;
   autoDismissSeconds?: number; // 팝업 토글 전용
   apiEndpoint?: string; // 외부 연동용
   description?: string;

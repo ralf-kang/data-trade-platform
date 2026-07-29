@@ -3,6 +3,8 @@ import { getCurrentAdmin, requireAdmin } from '@/lib/auth';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { canAccessFormData } from '@/lib/services/formService';
 import { listFormSubmissions, submitFormResponse } from '@/lib/services/submissionService';
+import { markTokenUsed, resolveRespondent, satisfiesIdentityMode } from '@/lib/respondent';
+import { prisma } from '@/lib/db';
 
 type Params = { params: Promise<{ formId: string }> };
 
@@ -45,8 +47,32 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (!body?.data || typeof body.data !== 'object') {
     return NextResponse.json({ error: 'data object is required' }, { status: 400 });
   }
+
+  // 응답자 신원 해석(1단계) — 쿠키의 응답 세션에서 읽는다. 없으면 익명.
+  const identity = await resolveRespondent(formId);
+
+  // 양식이 요구하는 신원 수준 검사 — IDENTIFIED 양식에 익명 접근이면 403.
+  const registry = await prisma.formRegistry.findUnique({
+    where: { id: formId },
+    select: { identityMode: true },
+  });
+  if (registry && !satisfiesIdentityMode(registry.identityMode, identity)) {
+    return NextResponse.json(
+      {
+        error: 'IDENTITY_REQUIRED',
+        message:
+          registry.identityMode === 'AUTHENTICATED'
+            ? '이 양식은 로그인 후 응답할 수 있습니다.'
+            : '이 양식은 발급받은 개인화 링크로만 응답할 수 있습니다. 담당자에게 링크 재발급을 요청하세요.',
+      },
+      { status: 403 }
+    );
+  }
+
   try {
-    const result = await submitFormResponse(formId, body.data);
+    const result = await submitFormResponse(formId, body.data, identity);
+    // 1회용 링크는 제출 완료 시점에 소진 처리한다.
+    if (identity.tokenId) await markTokenUsed(identity.tokenId);
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
     if (err instanceof Error && err.message === 'FORM_NOT_FOUND') {
