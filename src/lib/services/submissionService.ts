@@ -8,6 +8,7 @@ import {
   updateSubmission as esUpdateSubmission,
 } from '@/lib/elasticsearch';
 import { isFormActiveNow } from '@/lib/services/formService';
+import { maskSubmissionList, shouldMaskForm } from '@/lib/services/maskingService';
 import { bufferAnonymousPart, splitSubmission } from '@/lib/services/anonymityService';
 import { getActiveCampaign } from '@/lib/services/campaignService';
 import type { RespondentIdentity } from '@/lib/respondent';
@@ -21,7 +22,30 @@ export async function listFormSubmissions(
   formId: string,
   opts: { page?: number; pageSize?: number; search?: string } = {}
 ) {
-  return esListSubmissions({ formId, ...opts });
+  const [result, registry, template] = await Promise.all([
+    esListSubmissions({ formId, ...opts }),
+    prisma.formRegistry.findUnique({
+      where: { id: formId },
+      select: { authorHadPrivacyAuth: true, maskingExemptedAt: true },
+    }),
+    getFormTemplate(formId),
+  ]);
+
+  // 마스킹 계층 — 조회 화면도 이 서비스 함수를 통해서만 데이터를 내보내므로 여기서
+  // 적용하면 화면은 자동으로 가려진 값을 받는다. registry/template이 없으면(정합성
+  // 깨짐) 원본을 그대로 돌려주는 대신 안전한 쪽으로 — 아래에서 방어적으로 처리한다.
+  if (!registry || !template || !shouldMaskForm(registry)) return result;
+
+  const masked = await maskSubmissionList(
+    formId,
+    template.fields,
+    result.items.map((it) => ({ submissionId: it.submissionId, campaignId: it.campaignId, data: it.data }))
+  );
+  const maskedById = new Map(masked.map((m) => [m.submissionId, m.data]));
+  return {
+    ...result,
+    items: result.items.map((it) => ({ ...it, data: maskedById.get(it.submissionId) ?? it.data })),
+  };
 }
 
 /**
@@ -247,6 +271,26 @@ export async function exportFormSubmissions(
   }
   const truncated = total > collected.length;
 
+  // CSV 추출도 조회와 같은 마스킹을 거친다 — 화면에서만 가리면 추출 경로로 그대로
+  // 새 나가므로, 데이터가 나가는 지점(서비스 계층)에서 한 번 더 적용한다.
+  const [registry, template] = await Promise.all([
+    prisma.formRegistry.findUnique({
+      where: { id: formId },
+      select: { authorHadPrivacyAuth: true, maskingExemptedAt: true },
+    }),
+    getFormTemplate(formId),
+  ]);
+  let items = collected;
+  if (registry && template && shouldMaskForm(registry)) {
+    const masked = await maskSubmissionList(
+      formId,
+      template.fields,
+      collected.map((it) => ({ submissionId: it.submissionId, campaignId: it.campaignId, data: it.data }))
+    );
+    const maskedById = new Map(masked.map((m) => [m.submissionId, m.data]));
+    items = collected.map((it) => ({ ...it, data: maskedById.get(it.submissionId) ?? it.data }));
+  }
+
   await logAudit({
     userEmail: actor.email,
     action: 'DATA_EXPORT',
@@ -256,7 +300,7 @@ export async function exportFormSubmissions(
     formId,
   });
 
-  return { items: collected, total, truncated };
+  return { items, total, truncated };
 }
 
 /**

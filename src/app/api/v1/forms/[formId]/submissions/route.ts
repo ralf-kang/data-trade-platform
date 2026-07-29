@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticateApiRequest, isApiAuthError } from '@/lib/apiAuth';
 import { mapIngestError } from '@/lib/apiErrors';
 import { prisma } from '@/lib/db';
-import { listSubmissionsByCursor } from '@/lib/elasticsearch';
+import { getFormTemplate, listSubmissionsByCursor } from '@/lib/elasticsearch';
 import { ingestSubmissions } from '@/lib/services/apiIngestService';
+import { maskSubmissionList, shouldMaskForm } from '@/lib/services/maskingService';
 
 type Params = { params: Promise<{ formId: string }> };
 
@@ -32,14 +33,31 @@ export async function GET(request: NextRequest, { params }: Params) {
 
   try {
     const result = await listSubmissionsByCursor({ formId, since, cursor, pageSize });
+
+    // 마스킹 계층 — v1 API가 화면 마스킹의 우회 경로가 되지 않도록 여기서도 동일하게
+    // 적용한다. 화면에서만 가리고 API를 열어두면 마스킹은 사실상 없는 것과 같다.
+    let items = result.items;
+    if (shouldMaskForm(registry)) {
+      const template = await getFormTemplate(formId);
+      if (template) {
+        const masked = await maskSubmissionList(
+          formId,
+          template.fields,
+          items.map((it) => ({ submissionId: it.submissionId, campaignId: it.campaignId, data: it.data }))
+        );
+        const maskedById = new Map(masked.map((m) => [m.submissionId, m.data]));
+        items = items.map((it) => ({ ...it, data: maskedById.get(it.submissionId) ?? it.data }));
+      }
+    }
+
     return NextResponse.json(
       {
         formId,
         schemaVersion: registry.schemaVersion,
         total: result.total,
-        count: result.items.length,
+        count: items.length,
         nextCursor: result.nextCursor,
-        items: result.items,
+        items,
       },
       { headers: { 'X-Form-Schema-Version': String(registry.schemaVersion) } }
     );

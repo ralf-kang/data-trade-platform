@@ -6,6 +6,7 @@ import {
   upsertFormTemplate,
 } from '@/lib/elasticsearch';
 import { logAudit } from '@/lib/services/auditService';
+import { canCreateOrPublish } from '@/lib/services/authorAuthService';
 import type { FormField } from '@/components/builder/types';
 import type { ActingUser } from '@/lib/auth';
 import { isPlatformAdmin } from '@/lib/auth';
@@ -182,12 +183,19 @@ export async function createForm(input: CreateFormInput, actor: ActingUser): Pro
     updatedAt: now,
   });
 
+  // 마스킹 계층의 판정 기준을 제작 "시점"에 고정한다 — 나중에 자격을 얻어도 이 값은
+  // 바뀌지 않는다(formService.updateForm에서도 건드리지 않음). 무자격으로 걷은 데이터가
+  // 사후 승인으로 소급 정당화되면 "일단 걷고 나중에 자격 따면 된다"가 학습되기 때문이다.
+  const authorHadPrivacyAuth = await canCreateOrPublish(actor.id);
+
   const registry = await prisma.formRegistry.create({
     data: {
       id,
       status: 'OPEN',
       ownerId: actor.id,
       deployUrl: `/q/${id}`,
+      authorHadPrivacyAuth,
+      collectsPersonalData: input.fields.some((f) => f.type === 'privacy-consent'),
     },
     include: { owner: { select: { name: true } } },
   });
@@ -267,6 +275,12 @@ export async function updateForm(
     data: {
       updatedAt: new Date(),
       ...(bumpVersion ? { schemaVersion: { increment: 1 } } : {}),
+      // 동의서 컴포넌트 포함 여부로 매번 재계산한다(자진신고가 아니라 컴포넌트 존재가
+      // 신호이므로, 필드가 바뀔 때마다 다시 판정해야 한다). authorHadPrivacyAuth와
+      // 달리 이 값은 제작 시점 고정이 아니다.
+      ...(input.fields !== undefined
+        ? { collectsPersonalData: input.fields.some((f) => f.type === 'privacy-consent') }
+        : {}),
     },
     include: { owner: { select: { name: true } } },
   });

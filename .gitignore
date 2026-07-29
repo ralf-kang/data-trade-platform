@@ -46,3 +46,6 @@ next-env.d.ts
 
 # 로컬 개발 전용 compose 오버라이드 (DB 포트 노출 등) — 운영 3-tier 격리를 지키기 위해 커밋 금지
 docker-compose.override.yml
+
+# MindNode 마인드맵 번들 — 바이너리 묶음이라 diff가 무의미하고 용량이 크다.
+*.mindnode/

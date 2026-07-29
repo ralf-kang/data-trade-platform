@@ -473,6 +473,57 @@ export async function listSubmissionsByCursor({
   };
 }
 
+/**
+ * 준식별자 조합별 건수 — 마스킹 계층의 k=1 레코드 판정에 쓰인다.
+ *
+ * 개별로는 무해한 항목(부서+직급+입사년도 등)도 조합하면 특정 인물로 좁혀질 수 있다.
+ * 조합이 이 스코프(회차 또는 양식 전체) 안에서 한 건뿐이면 그 레코드는 사실상 실명과
+ * 같으므로, 호출부(maskingService)가 해당 레코드 전체를 마스킹한다.
+ *
+ * fieldIds가 비어 있으면 판정할 것이 없으므로 빈 배열을 반환한다.
+ */
+export async function countQuasiIdentifierCombinations(
+  formId: string,
+  campaignId: string | undefined,
+  fields: Array<{ id: string; type: string }>
+): Promise<Array<{ key: Record<string, unknown>; count: number }>> {
+  if (fields.length === 0) return [];
+  await ensureIndices();
+
+  // 필드 경로는 실제 ES 동적 매핑을 따라야 한다. 문자열 필드(select/radio/checkbox 등)는
+  // dynamic text 매핑이라 .keyword 하위필드가 생기지만, number는 long으로, date는
+  // (date_detection에 의해) date로 매핑되어 .keyword가 아예 존재하지 않는다.
+  // 없는 경로를 참조하면 ES가 에러 없이 전부 null로 묶어버려 — 실제로 이렇게 나이(숫자)
+  // 필드를 포함한 조합이 전원 같은 버킷(size=10)으로 합쳐져 k=1 판정이 통째로
+  // 무력화되는 사고가 있었다. 타입별로 올바른 경로를 골라야 한다.
+  const rawTypes = new Set(['number', 'date']);
+  const sources = fields.map(({ id, type }) => ({
+    [id]: {
+      terms: { field: rawTypes.has(type) ? `data.${id}` : `data.${id}.keyword`, missing_bucket: true },
+    },
+  }));
+
+  const res = await elasticClient.search({
+    index: INDEX_NAMES.SUBMISSIONS,
+    size: 0,
+    query: {
+      bool: {
+        filter: [{ term: { formId } }, ...(campaignId ? [{ term: { campaignId } }] : [])],
+      },
+    },
+    aggs: {
+      combos: {
+        // composite 집계 — 여러 필드의 조합별 건수를 한 번에 센다.
+        composite: { size: 1000, sources },
+      },
+    },
+  });
+
+  type Bucket = { key: Record<string, unknown>; doc_count: number };
+  const agg = res.aggregations?.combos as { buckets: Bucket[] } | undefined;
+  return (agg?.buckets ?? []).map((b) => ({ key: b.key, count: b.doc_count }));
+}
+
 export interface ListSubmissionsParams {
   formId: string;
   page?: number;
