@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/db';
 import { getFormTemplate, getSubmission } from '@/lib/elasticsearch';
 import type { FormField } from '@/components/builder/types';
+import type { ActingUser } from '@/lib/auth';
+import { canSeeRewards, getSystemConfig } from '@/lib/services/systemConfigService';
 
 /**
  * 임직원(Member) 마이페이지 데이터.
@@ -254,8 +256,31 @@ export async function getPointSummary(userId: string): Promise<PointSummary> {
   };
 }
 
+export interface GatedPointSummary {
+  /** 보상 화면을 이 사용자에게 노출할지 — SystemConfig.rewardVisibility 단일 판정 결과. */
+  visible: boolean;
+  /** visible=true이면서 아직 ADMIN_ONLY(정식 운영 전) 단계일 때 — "🚧 개발 중" 배지용. */
+  developmentPreview: boolean;
+  summary: PointSummary | null;
+}
+
+/**
+ * 화면·API 어느 쪽에서 호출하든 canSeeRewards() 하나로만 판정한다 — 화면만 가리면
+ * API(/api/me/points, /api/me/summary)로 그대로 우회되기 때문이다.
+ */
+export async function getGatedPointSummary(actor: ActingUser): Promise<GatedPointSummary> {
+  const [visible, { rewardVisibility }] = await Promise.all([canSeeRewards(actor), getSystemConfig()]);
+  if (!visible) return { visible: false, developmentPreview: false, summary: null };
+  return {
+    visible: true,
+    developmentPreview: rewardVisibility === 'ADMIN_ONLY',
+    summary: await getPointSummary(actor.id),
+  };
+}
+
 /** 대시보드 요약 — 위젯에 쓰이는 숫자들. */
-export async function getMemberSummary(userId: string) {
+export async function getMemberSummary(actor: ActingUser) {
+  const userId = actor.id;
   const [pending, participations, forms, points] = await Promise.all([
     getPendingActions(userId),
     prisma.campaignParticipation.count({ where: { userId } }),
@@ -264,7 +289,7 @@ export async function getMemberSummary(userId: string) {
       select: { campaign: { select: { formId: true } } },
       distinct: ['campaignId'],
     }),
-    getPointSummary(userId),
+    getGatedPointSummary(actor),
   ]);
 
   const distinctForms = new Set(forms.map((f) => f.campaign.formId)).size;

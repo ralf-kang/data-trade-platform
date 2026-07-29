@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Settings, Mail, Key, Save, CheckCircle2, Globe, QrCode } from 'lucide-react';
+import { Settings, Mail, Key, Save, CheckCircle2, Globe, QrCode, Coins } from 'lucide-react';
 import Link from 'next/link';
 import LdapSettings from '@/components/settings/LdapSettings';
 
@@ -15,11 +15,39 @@ export default function SuperAdminSettingsPage() {
   const [baseUrlSaving, setBaseUrlSaving] = useState(false);
   const [baseUrlSaved, setBaseUrlSaved] = useState(false);
 
+  // 보상(포인트) 화면 노출 범위 — canSeeRewards()가 참조하는 단일 스위치.
+  const [rewardVisibility, setRewardVisibilityState] = useState<'HIDDEN' | 'ADMIN_ONLY' | 'ALL_MEMBERS'>('ADMIN_ONLY');
+  const [rewardSaving, setRewardSaving] = useState(false);
+  const [rewardSaved, setRewardSaved] = useState(false);
+
   useEffect(() => {
     fetch('/api/system-config')
       .then((res) => (res.ok ? res.json() : { config: {} }))
-      .then((json) => setPublicBaseUrl(json.config?.publicBaseUrl ?? ''));
+      .then((json) => {
+        setPublicBaseUrl(json.config?.publicBaseUrl ?? '');
+        setRewardVisibilityState(json.config?.rewardVisibility ?? 'ADMIN_ONLY');
+      });
   }, []);
+
+  const handleSaveRewardVisibility = async (value: 'HIDDEN' | 'ADMIN_ONLY' | 'ALL_MEMBERS') => {
+    setRewardVisibilityState(value);
+    setRewardSaving(true);
+    try {
+      const res = await fetch('/api/system-config', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rewardVisibility: value }),
+      });
+      if (!res.ok) {
+        alert('저장에 실패했습니다. 슈퍼관리자 권한이 필요합니다.');
+        return;
+      }
+      setRewardSaved(true);
+      setTimeout(() => setRewardSaved(false), 3000);
+    } finally {
+      setRewardSaving(false);
+    }
+  };
 
   const handleSaveBaseUrl = async () => {
     setBaseUrlSaving(true);
@@ -93,6 +121,50 @@ export default function SuperAdminSettingsPage() {
                 {baseUrlSaving ? '저장 중...' : baseUrlSaved ? '저장됨' : '저장'}
               </button>
             </div>
+          </div>
+        </div>
+
+        {/* 보상 화면 노출 범위 — canSeeRewards() 단일 게이트가 참조하는 값 */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-8">
+          <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center">
+            <Coins className="w-5 h-5 text-amber-500 mr-2" />
+            <h2 className="font-bold text-slate-800">보상(포인트) 화면 노출 범위</h2>
+          </div>
+          <div className="p-6 space-y-4">
+            <p className="text-sm text-slate-500">
+              마이페이지 포인트 화면과 관련 API(/api/me/points, /api/me/summary)에 모두 적용됩니다.
+              품질 게이트 없이 전체 공개하면 어뷰징을 막을 수단이 없으므로, 준비가 끝나기 전에는
+              관리자 미리보기(ADMIN_ONLY)로 두는 것을 권장합니다.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {(
+                [
+                  { value: 'HIDDEN', label: '전체 비공개', desc: '관리자를 포함해 아무에게도 보이지 않음' },
+                  { value: 'ADMIN_ONLY', label: '관리자만 미리보기', desc: '슈퍼/일반 관리자에게만 "개발 중" 배지와 함께 노출' },
+                  { value: 'ALL_MEMBERS', label: '전체 공개', desc: '전 임직원에게 정식 노출 (운영 시작)' },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  disabled={rewardSaving}
+                  onClick={() => handleSaveRewardVisibility(opt.value)}
+                  className={`text-left p-4 rounded-lg border-2 transition-colors disabled:opacity-50 ${
+                    rewardVisibility === opt.value
+                      ? 'border-indigo-600 bg-indigo-50'
+                      : 'border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="font-bold text-sm text-slate-800">{opt.label}</div>
+                  <div className="text-xs text-slate-500 mt-1">{opt.desc}</div>
+                </button>
+              ))}
+            </div>
+            {rewardSaved && (
+              <p className="text-xs text-emerald-600 flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" /> 저장되었습니다.
+              </p>
+            )}
           </div>
         </div>
 

@@ -3,16 +3,17 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { 
-  LayoutDashboard, 
-  FileText, 
-  Globe, 
-  Users, 
-  Activity, 
-  ShieldAlert, 
-  Shield, 
+  LayoutDashboard,
+  FileText,
+  Globe,
+  Users,
+  Activity,
+  ShieldAlert,
+  Shield,
   CreditCard,
   Settings,
-  Database
+  Database,
+  UserCog
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 
@@ -34,6 +35,7 @@ export function AdminSidebar({ role = 'admin' }: AdminSidebarProps) {
   const superAdminMenus = [
     { name: '슈퍼 어드민 대시보드', href: '/super-admin', icon: CreditCard },
     { name: '조직 및 관리자 제어', href: '/super-admin/users', icon: ShieldAlert },
+    { name: '개인정보취급자 명부', href: '/super-admin/author-authorizations', icon: UserCog },
     { name: '전체 행동 감사 (Audit)', href: '/admin/audit', icon: Activity },
     { name: '시스템 환경 설정', href: '/super-admin/settings', icon: Settings },
   ];

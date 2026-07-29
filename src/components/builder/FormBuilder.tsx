@@ -10,7 +10,7 @@ import {
   Layers, BellOff, ShieldAlert, Database, FileSpreadsheet, Save, ArrowUp, ArrowDown, Trash2,
   Smartphone, Monitor, Globe, Regex, MapPin, Star, GripHorizontal, Sparkles, Plus, X, SlidersHorizontal, Lock
 } from 'lucide-react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import AiAutoGenerator from './AiAutoGenerator';
 
 const FIELD_TYPES: { type: FieldType; label: string; icon: React.ReactNode }[] = [
@@ -42,6 +42,7 @@ const FIELD_TYPES: { type: FieldType; label: string; icon: React.ReactNode }[] =
 const OPTIONS_TYPES: FieldType[] = ['select', 'radio', 'checkbox'];
 
 export default function FormBuilder() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const id = searchParams?.get('id');
 
@@ -321,13 +322,12 @@ export default function FormBuilder() {
             return (
               <button
                 key={ft.type}
-                onClick={() =>
-                  locked
-                    ? alert(
-                        '개인정보 취급자 자격이 필요한 컴포넌트입니다.\n마이페이지에서 제작 자격을 먼저 신청해주세요.'
-                      )
-                    : addField(ft.type)
-                }
+                onClick={() => {
+                  if (!locked) { addField(ft.type); return; }
+                  if (confirm('개인정보 취급자 자격이 필요한 컴포넌트입니다.\n지금 마이페이지에서 자격을 신청하시겠습니까?')) {
+                    router.push('/me/author-authorization');
+                  }
+                }}
                 className={`relative flex flex-col items-center justify-center p-3 border rounded transition-colors ${
                   locked
                     ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'

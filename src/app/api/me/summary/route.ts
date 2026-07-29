@@ -9,7 +9,7 @@ export async function GET() {
 
   const user = await getCurrentUser();
   const [summary, pending] = await Promise.all([
-    getMemberSummary(user.id),
+    getMemberSummary(user),
     getPendingActions(user.id),
   ]);
   return NextResponse.json({

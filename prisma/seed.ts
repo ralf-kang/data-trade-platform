@@ -215,6 +215,26 @@ const AUDIT_LOGS = [
   { userEmail: 'ralfkang@ktl.re.kr', action: 'LOGIN_MFA', target: 'System', details: '최고 관리자 권한 에스컬레이션 로그인', severity: 'critical' as const },
 ];
 
+// -----------------------------------------------------------------------
+// 4) 정형 데이터: 포인트 원장(append-only) 데모
+// -----------------------------------------------------------------------
+// 보상 화면 가시성(rewardVisibility=ADMIN_ONLY)의 관리자 미리보기가 하드코딩 숫자
+// 대신 실제 원장 데이터를 보여주도록, 최고관리자 계정에 데모 적립 내역을 채운다.
+// 자동 적립은 아직 켜지 않았으므로(품질 게이트 부재) 이 데이터는 시드 전용이다.
+const POINT_LEDGER_SEED: Array<{
+  userEmail: string;
+  delta: number;
+  reason: string;
+  status: 'PENDING' | 'APPROVED' | 'PAID' | 'REJECTED' | 'CANCELED';
+  statusReason?: string;
+  daysAgo: number;
+}> = [
+  { userEmail: 'ralfkang@ktl.re.kr', delta: 500, reason: '2024 하반기 고객 만족도 조사 응답', status: 'PAID', daysAgo: 20 },
+  { userEmail: 'ralfkang@ktl.re.kr', delta: 300, reason: '신규 입사자 온보딩 피드백 응답', status: 'PAID', daysAgo: 15 },
+  { userEmail: 'ralfkang@ktl.re.kr', delta: 200, reason: '2026년 하반기 워크샵 참가 신청', status: 'APPROVED', daysAgo: 5 },
+  { userEmail: 'ralfkang@ktl.re.kr', delta: 100, reason: 'IT 장비 지급 요청서 응답', status: 'REJECTED', statusReason: '중복 제출', daysAgo: 10 },
+];
+
 async function main() {
   console.log('[seed] Elasticsearch 인덱스 확인/생성...');
   await ensureIndices();
@@ -300,6 +320,27 @@ async function main() {
   console.log('[seed] 감사 로그 생성...');
   for (const log of AUDIT_LOGS) {
     await prisma.auditLog.create({ data: log });
+  }
+
+  console.log('[seed] 포인트 원장(보상 화면 관리자 미리보기용) 생성...');
+  const existingLedgerCount = await prisma.pointLedger.count();
+  if (existingLedgerCount === 0) {
+    for (const entry of POINT_LEDGER_SEED) {
+      const user = userByEmail.get(entry.userEmail);
+      if (!user) continue;
+      const createdAt = new Date(Date.now() - entry.daysAgo * 24 * 60 * 60 * 1000);
+      await prisma.pointLedger.create({
+        data: {
+          userId: user.id,
+          delta: entry.delta,
+          reason: entry.reason,
+          status: entry.status,
+          statusReason: entry.statusReason ?? null,
+          createdAt,
+          settledAt: entry.status === 'PAID' || entry.status === 'REJECTED' ? createdAt : null,
+        },
+      });
+    }
   }
 
   console.log('[seed] 데이터베이스제작자 등록(저작권법 제91조~제95조) 생성...');

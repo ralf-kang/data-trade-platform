@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, FileText, Coins, CheckCircle2, ArrowRight, Clock } from 'lucide-react';
+import { AlertTriangle, FileText, Coins, CheckCircle2, ArrowRight, Clock, Construction } from 'lucide-react';
 
 interface Pending {
   campaignId: string;
@@ -18,7 +18,11 @@ interface Summary {
   responseCount: number;
   formCount: number;
   targetedCount: number;
-  points: { balance: number; pending: number; programStarted: boolean };
+  points: {
+    visible: boolean;
+    developmentPreview: boolean;
+    summary: { balance: number; pending: number; programStarted: boolean } | null;
+  };
 }
 
 export default function MemberHome() {
@@ -60,7 +64,7 @@ export default function MemberHome() {
         <Stat label="총 응답 횟수" value={summary.responseCount} icon={CheckCircle2} />
         <Stat
           label="보유 포인트"
-          value={summary.points.programStarted ? summary.points.balance : '—'}
+          value={summary.points.visible && summary.points.summary?.programStarted ? summary.points.summary.balance : '—'}
           icon={Coins}
         />
       </div>
@@ -106,18 +110,23 @@ export default function MemberHome() {
 
       {/* 포인트 — 원장이 비어 있으면 가짜 숫자 대신 상태를 정직하게 알린다 */}
       <section className="bg-white rounded-xl border border-slate-200 p-5">
-        <h2 className="font-bold text-slate-800 text-sm flex items-center mb-3">
-          <Coins className="w-4 h-4 mr-2 text-amber-500" /> 포인트
+        <h2 className="font-bold text-slate-800 text-sm flex items-center mb-3 gap-2">
+          <Coins className="w-4 h-4 text-amber-500" /> 포인트
+          {summary.points.visible && summary.points.developmentPreview && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+              <Construction className="w-3 h-3" /> 개발 중
+            </span>
+          )}
         </h2>
-        {summary.points.programStarted ? (
+        {summary.points.visible && summary.points.summary?.programStarted ? (
           <div className="flex items-baseline gap-6">
             <div>
-              <div className="text-2xl font-bold text-slate-900">{summary.points.balance.toLocaleString()}P</div>
+              <div className="text-2xl font-bold text-slate-900">{summary.points.summary.balance.toLocaleString()}P</div>
               <div className="text-xs text-slate-500">사용 가능</div>
             </div>
-            {summary.points.pending > 0 && (
+            {summary.points.summary.pending > 0 && (
               <div>
-                <div className="text-lg font-bold text-amber-600">{summary.points.pending.toLocaleString()}P</div>
+                <div className="text-lg font-bold text-amber-600">{summary.points.summary.pending.toLocaleString()}P</div>
                 <div className="text-xs text-slate-500">검토 중</div>
               </div>
             )}

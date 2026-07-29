@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { LayoutDashboard, FileText, TrendingUp, Coins, LogOut } from 'lucide-react';
+import { LayoutDashboard, FileText, TrendingUp, Coins, LogOut, ShieldCheck } from 'lucide-react';
 
 /**
  * 임직원 전용 레이아웃.
@@ -12,6 +12,7 @@ export default function MemberLayout({ children }: { children: React.ReactNode }
     { href: '/me', label: '홈', icon: LayoutDashboard },
     { href: '/me/responses', label: '내 응답', icon: FileText },
     { href: '/me/points', label: '포인트', icon: Coins },
+    { href: '/me/author-authorization', label: '제작 자격', icon: ShieldCheck },
   ];
 
   return (
