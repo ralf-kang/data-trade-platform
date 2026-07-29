@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Table, ArrowLeft, Download, Filter, Search, Edit2, Save, X, AlertTriangle } from 'lucide-react';
+import { Table, ArrowLeft, Download, Filter, Search, Edit2, Save, X, AlertTriangle, Cloud } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import type { FormListItem, SubmissionItem } from '@/lib/apiTypes';
@@ -146,6 +146,12 @@ export default function DataViewerPage() {
           <button className="flex items-center px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium transition-colors">
             <Filter className="w-4 h-4 mr-2" /> 필터
           </button>
+          <Link
+            href={`/admin/data/${formId}/wordcloud`}
+            className="flex items-center px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium transition-colors"
+          >
+            <Cloud className="w-4 h-4 mr-2" /> 워드클라우드
+          </Link>
           <button onClick={handleExportCsv} className="flex items-center px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-bold shadow-sm transition-colors">
             <Download className="w-4 h-4 mr-2" /> 엑셀/CSV 추출
           </button>
