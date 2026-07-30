@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, AlertTriangle, TrendingDown, Send, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, TrendingDown, TrendingUp, Send, CheckCircle2, BarChart3, Info } from 'lucide-react';
 
 interface MissingFieldStat {
   fieldId: string;
@@ -23,10 +23,34 @@ interface OutlierEntry {
   reason: string;
 }
 
+interface FieldDistributionStat {
+  fieldId: string;
+  label: string;
+  type: string;
+  numeric?: { count: number; avg: number; min: number; max: number; stddev: number };
+  options?: Array<{ value: string; count: number; rate: number }>;
+}
+
+interface TrendPoint {
+  weekStart: string;
+  count: number;
+  numericAverages: Record<string, number>;
+}
+
+interface RepresentativenessWarning {
+  scope: 'form' | 'field';
+  fieldId?: string;
+  label?: string;
+  message: string;
+}
+
 interface QualityReport {
   totalSubmissions: number;
   missing: MissingFieldStat[];
   outliers: OutlierEntry[];
+  fieldStats: FieldDistributionStat[];
+  trend: TrendPoint[];
+  representativeness: RepresentativenessWarning[];
 }
 
 interface CorrectionRequest {
@@ -109,6 +133,72 @@ export default function DataQualityPage() {
           {report && !loading && (
             <>
               <div className="text-sm text-slate-500">전체 응답 {report.totalSubmissions.toLocaleString()}건 분석</div>
+
+              {report.representativeness.length > 0 && (
+                <section className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4">
+                  <div className="font-bold text-amber-800 text-sm flex items-center gap-2 mb-2">
+                    <Info className="w-4 h-4" /> 대표성 경고
+                  </div>
+                  <ul className="space-y-1">
+                    {report.representativeness.map((w, i) => (
+                      <li key={i} className="text-xs text-amber-700">
+                        {w.label ? <span className="font-medium">{w.label}: </span> : null}
+                        {w.message}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+
+              {report.trend.length > 0 && (
+                <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 font-bold text-slate-800 text-sm flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-indigo-600" /> 추세선 (주간 응답량)
+                  </div>
+                  <div className="p-5">
+                    <TrendChart trend={report.trend} />
+                  </div>
+                </section>
+              )}
+
+              {report.fieldStats.length > 0 && (
+                <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 font-bold text-slate-800 text-sm flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 text-emerald-600" /> 기능 분석 (문항별 응답 분포)
+                  </div>
+                  <ul className="divide-y divide-slate-100">
+                    {report.fieldStats.map((f) => (
+                      <li key={f.fieldId} className="px-5 py-3">
+                        <div className="font-medium text-slate-900 text-sm mb-2">{f.label}</div>
+                        {f.numeric && (
+                          <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500">
+                            <span>응답 {f.numeric.count}건</span>
+                            <span>평균 {f.numeric.avg.toFixed(1)}</span>
+                            <span>최소 {f.numeric.min}</span>
+                            <span>최대 {f.numeric.max}</span>
+                            <span>표준편차 {f.numeric.stddev.toFixed(1)}</span>
+                          </div>
+                        )}
+                        {f.options && (
+                          <div className="space-y-1.5">
+                            {f.options.map((o) => (
+                              <div key={o.value} className="flex items-center gap-2 text-xs">
+                                <span className="w-24 truncate text-slate-600 shrink-0">{o.value}</span>
+                                <div className="flex-1 h-3 bg-slate-100 rounded overflow-hidden">
+                                  <div className="h-full bg-emerald-400" style={{ width: `${Math.round(o.rate * 100)}%` }} />
+                                </div>
+                                <span className="w-16 text-right text-slate-400 shrink-0">
+                                  {o.count}건 ({Math.round(o.rate * 100)}%)
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
 
               <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 font-bold text-slate-800 text-sm flex items-center gap-2">
@@ -218,6 +308,35 @@ export default function DataQualityPage() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// 외부 차트 라이브러리 없이 응답량 추세를 막대그래프로 보여준다 — 문항 수만큼 선을 그리면
+// 오히려 읽기 어려워지므로, 회차 흐름 파악이 목적인 이 화면에서는 응답량만 시각화하고
+// 숫자 문항 평균은 막대 위 툴팁성 텍스트로만 곁들인다.
+function TrendChart({ trend }: { trend: TrendPoint[] }) {
+  const maxCount = Math.max(...trend.map((t) => t.count), 1);
+  return (
+    <div className="flex items-end gap-2 h-40">
+      {trend.map((t) => {
+        const heightPct = Math.max((t.count / maxCount) * 100, 4);
+        const numericEntries = Object.entries(t.numericAverages);
+        return (
+          <div key={t.weekStart} className="flex-1 flex flex-col items-center justify-end h-full group relative">
+            <div className="absolute -top-6 text-[10px] text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+              {t.count}건
+              {numericEntries.length > 0 &&
+                ` · ${numericEntries.map(([, avg]) => avg.toFixed(1)).join(', ')}`}
+            </div>
+            <div
+              className="w-full bg-indigo-400 hover:bg-indigo-500 rounded-t transition-colors"
+              style={{ height: `${heightPct}%` }}
+            />
+            <div className="text-[10px] text-slate-400 mt-1.5 whitespace-nowrap">{t.weekStart.slice(5)}</div>
+          </div>
+        );
+      })}
     </div>
   );
 }

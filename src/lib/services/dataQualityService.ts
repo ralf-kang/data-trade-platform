@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import type { ActingUser } from '@/lib/auth';
 import { logAudit } from './auditService';
 import type { CorrectionRequestIssueType } from '@/generated/prisma/client';
+import { startOfWeek, format } from 'date-fns';
 
 /**
  * 결측치·이상치 조회 (docs/데이터품질-검증구간-설계.md §5 순위 5 — "품질 대시보드 + 정정 요청").
@@ -24,6 +25,10 @@ const SKIP_TYPES = new Set([
   'privacy-consent', 'api-select', 'csv-select',
 ]);
 const NUMERIC_TYPES = new Set(['number']);
+const CHOICE_TYPES = new Set(['select', 'radio', 'checkbox']);
+// 이 밑으로 표본이 적으면 통계(사분위수·평균)가 표본 하나에 크게 흔들려 신뢰하기 어렵다 —
+// §5 순위 6 "대표성 경고"에 대응해, 판정을 건너뛰거나 결과에 경고를 붙이는 기준으로 쓴다.
+const MIN_REPRESENTATIVE_SAMPLES = 10;
 
 function isBlank(value: unknown): boolean {
   if (value === undefined || value === null) return true;
@@ -50,39 +55,82 @@ export interface OutlierEntry {
   reason: string;
 }
 
+/** 숫자·선택형 문항의 분포 요약 — "기능 분석": 결측/이상치 여부를 넘어 문항 자체의 응답 경향을 보여준다. */
+export interface FieldDistributionStat {
+  fieldId: string;
+  label: string;
+  type: string;
+  numeric?: { count: number; avg: number; min: number; max: number; stddev: number };
+  options?: Array<{ value: string; count: number; rate: number }>;
+}
+
+/** 회차(주 단위) 추세선 — 응답량과 숫자 문항 평균값이 시간에 따라 어떻게 움직이는지. */
+export interface TrendPoint {
+  weekStart: string; // 해당 주의 시작일(월요일, yyyy-MM-dd)
+  count: number;
+  numericAverages: Record<string, number>; // fieldId -> 그 주의 평균값(숫자 문항만)
+}
+
+export interface RepresentativenessWarning {
+  scope: 'form' | 'field';
+  fieldId?: string;
+  label?: string;
+  message: string;
+}
+
 export interface QualityReport {
   totalSubmissions: number;
   missing: MissingFieldStat[];
   outliers: OutlierEntry[];
+  fieldStats: FieldDistributionStat[];
+  trend: TrendPoint[];
+  representativeness: RepresentativenessWarning[];
 }
 
 async function scanSubmissions(formId: string) {
-  const collected: Array<{ submissionId: string; campaignId?: string; data: Record<string, unknown> }> = [];
+  const collected: Array<{ submissionId: string; campaignId?: string; submittedAt?: string; data: Record<string, unknown> }> = [];
   let page = 1;
   let total = 0;
   while (collected.length < SCAN_HARD_CAP) {
     const result = await esListSubmissions({ formId, page, pageSize: SCAN_PAGE_SIZE });
     total = result.total;
-    collected.push(...result.items.map((it) => ({ submissionId: it.submissionId, campaignId: it.campaignId, data: it.data })));
+    collected.push(...result.items.map((it) => ({ submissionId: it.submissionId, campaignId: it.campaignId, submittedAt: it.submittedAt, data: it.data })));
     if (result.items.length < SCAN_PAGE_SIZE || collected.length >= total) break;
     page += 1;
   }
   return { items: collected, total };
 }
 
+function computeStddev(values: number[], avg: number): number {
+  if (values.length === 0) return 0;
+  const variance = values.reduce((sum, v) => sum + (v - avg) ** 2, 0) / values.length;
+  return Math.sqrt(variance);
+}
+
 export async function analyzeFormQuality(formId: string): Promise<QualityReport> {
   const template = await getFormTemplate(formId);
-  if (!template) return { totalSubmissions: 0, missing: [], outliers: [] };
+  if (!template) return { totalSubmissions: 0, missing: [], outliers: [], fieldStats: [], trend: [], representativeness: [] };
 
   const fields = template.fields.filter((f) => !f.anonymous && !SKIP_TYPES.has(f.type));
   const { items, total } = await scanSubmissions(formId);
 
   const missing: MissingFieldStat[] = [];
   const outliers: OutlierEntry[] = [];
+  const fieldStats: FieldDistributionStat[] = [];
+  const representativeness: RepresentativenessWarning[] = [];
+
+  if (total > 0 && total < MIN_REPRESENTATIVE_SAMPLES) {
+    representativeness.push({
+      scope: 'form',
+      message: `전체 응답이 ${total}건으로 적어(${MIN_REPRESENTATIVE_SAMPLES}건 미만) 아래 통계가 실제 경향을 대표하지 못할 수 있습니다.`,
+    });
+  }
 
   for (const field of fields) {
     const missingIds: string[] = [];
     const numericSamples: Array<{ submissionId: string; value: number }> = [];
+    const choiceCounts = new Map<string, number>();
+    let choiceAnswered = 0;
 
     for (const item of items) {
       const value = item.data[field.id];
@@ -92,6 +140,14 @@ export async function analyzeFormQuality(formId: string): Promise<QualityReport>
       }
       if (NUMERIC_TYPES.has(field.type) && typeof value === 'number') {
         numericSamples.push({ submissionId: item.submissionId, value });
+      }
+      if (CHOICE_TYPES.has(field.type)) {
+        choiceAnswered += 1;
+        const values = Array.isArray(value) ? value : [value];
+        for (const v of values) {
+          const key = String(v);
+          choiceCounts.set(key, (choiceCounts.get(key) ?? 0) + 1);
+        }
       }
     }
 
@@ -107,7 +163,7 @@ export async function analyzeFormQuality(formId: string): Promise<QualityReport>
       });
     }
 
-    // 이상치 — 사분위수 기반(IQR). 표본이 너무 적으면 판정을 건너뛴다.
+    // 이상치 — 사분위수 기반(IQR). 표본이 너무 적으면 판정을 건너뛰고 대표성 경고로 남긴다.
     if (numericSamples.length >= MIN_SAMPLES_FOR_OUTLIER) {
       const sorted = [...numericSamples].sort((a, b) => a.value - b.value);
       const q1 = sorted[Math.floor(sorted.length * 0.25)].value;
@@ -126,10 +182,70 @@ export async function analyzeFormQuality(formId: string): Promise<QualityReport>
           });
         }
       }
+    } else if (numericSamples.length > 0) {
+      representativeness.push({
+        scope: 'field',
+        fieldId: field.id,
+        label: field.label,
+        message: `응답이 ${numericSamples.length}건으로 적어(${MIN_SAMPLES_FOR_OUTLIER}건 미만) 이상치 판정을 건너뛰었습니다.`,
+      });
+    }
+
+    // 기능 분석 — 숫자 문항은 분포 요약, 선택형 문항은 옵션별 응답 비율.
+    if (NUMERIC_TYPES.has(field.type) && numericSamples.length > 0) {
+      const values = numericSamples.map((s) => s.value);
+      const avg = values.reduce((a, b) => a + b, 0) / values.length;
+      fieldStats.push({
+        fieldId: field.id,
+        label: field.label,
+        type: field.type,
+        numeric: { count: values.length, avg, min: Math.min(...values), max: Math.max(...values), stddev: computeStddev(values, avg) },
+      });
+    }
+    if (CHOICE_TYPES.has(field.type) && choiceAnswered > 0) {
+      fieldStats.push({
+        fieldId: field.id,
+        label: field.label,
+        type: field.type,
+        options: Array.from(choiceCounts.entries())
+          .map(([value, count]) => ({ value, count, rate: count / choiceAnswered }))
+          .sort((a, b) => b.count - a.count),
+      });
     }
   }
 
-  return { totalSubmissions: total, missing, outliers };
+  // 추세선 — 제출 시각을 주 단위(월요일 시작)로 묶어 응답량과 숫자 문항 평균을 함께 본다.
+  const weekMap = new Map<string, { count: number; numericSums: Map<string, { sum: number; n: number }> }>();
+  for (const item of items) {
+    if (!item.submittedAt) continue;
+    const weekStart = format(startOfWeek(new Date(item.submittedAt), { weekStartsOn: 1 }), 'yyyy-MM-dd');
+    let bucket = weekMap.get(weekStart);
+    if (!bucket) {
+      bucket = { count: 0, numericSums: new Map() };
+      weekMap.set(weekStart, bucket);
+    }
+    bucket.count += 1;
+    for (const field of fields) {
+      if (!NUMERIC_TYPES.has(field.type)) continue;
+      const value = item.data[field.id];
+      if (typeof value !== 'number') continue;
+      const cur = bucket.numericSums.get(field.id) ?? { sum: 0, n: 0 };
+      cur.sum += value;
+      cur.n += 1;
+      bucket.numericSums.set(field.id, cur);
+    }
+  }
+  const trend: TrendPoint[] = Array.from(weekMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([weekStart, bucket]) => ({
+      weekStart,
+      count: bucket.count,
+      numericAverages: Object.fromEntries(
+        Array.from(bucket.numericSums.entries()).map(([fieldId, { sum, n }]) => [fieldId, sum / n])
+      ),
+    }));
+
+  return { totalSubmissions: total, missing, outliers, fieldStats, trend, representativeness };
 }
 
 // ---------------------------------------------------------------------------
