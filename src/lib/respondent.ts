@@ -156,11 +156,32 @@ export async function verifyToken(formId: string, rawToken: string): Promise<Ver
 
 /**
  * 현재 요청의 응답자 신원을 해석한다.
- * 우선순위: 응답 세션 쿠키(IDENTIFIED) → 없음(ANONYMOUS).
- * (AUTHENTICATED는 관리자 로그인 세션이 정식 도입되면 여기에 추가된다.)
+ * 우선순위: 플랫폼 로그인 세션(AUTHENTICATED) → 응답 세션 쿠키(IDENTIFIED) → 없음(ANONYMOUS).
+ *
+ * 로그인 세션을 개인화 링크보다 먼저 보는 이유: 로그인은 본인이 직접 자격을 증명한
+ * 것이고, 개인화 링크는 그 링크를 쥔 사람이 본인이라는 "약한" 가정에 의존한다 —
+ * 신뢰도가 더 높은 쪽을 우선한다.
  */
 export async function resolveRespondent(formId: string): Promise<RespondentIdentity> {
+  // 익명(ANONYMOUS) 양식지는 어떤 세션·쿠키가 있어도 신원을 절대 엮지 않는다 — 같은
+  // 브라우저로 관리자 포털에 로그인해 둔 상태로 익명 설문에 들어와도(흔한 상황이다)
+  // 신원이 새어 들어가면 안 된다. 이 검사가 다른 모든 신원 해석보다 우선한다.
+  const registry = await prisma.formRegistry.findUnique({ where: { id: formId }, select: { identityMode: true } });
+  if (registry?.identityMode === 'ANONYMOUS') return ANONYMOUS;
+
   const store = await cookies();
+
+  // 플랫폼 로그인 세션(src/lib/auth.ts의 adminRole/adminEmail 쿠키 브릿지) — 계정을
+  // 새로 만들지는 않는다. 없는 이메일이면 로그인 상태가 아닌 것과 같이 취급한다.
+  const rawEmail = store.get('adminEmail')?.value;
+  if (rawEmail) {
+    const email = decodeURIComponent(rawEmail);
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (user && user.status === 'ACTIVE') {
+      return { level: 'AUTHENTICATED', user, tokenId: null, campaignId: null };
+    }
+  }
+
   const cookieHash = store.get(`${COOKIE_PREFIX}${formId}`)?.value;
   if (!cookieHash) return ANONYMOUS;
 

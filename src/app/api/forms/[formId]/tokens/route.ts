@@ -62,6 +62,17 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'userIds 배열이 필요합니다.' }, { status: 400 });
   }
 
+  // 익명(ANONYMOUS) 양식지는 개인화 링크 자체가 익명성과 모순된다 — 링크를 받는 순간 그
+  // 사람은 더 이상 익명이 아니다. 혼합(MIXED)은 "링크가 있으면 식별, 없으면 익명"이 정확히
+  // 의도된 동작이므로 여기서는 막지 않는다 — 실제 신원 강제는 identityMode에 맡긴다.
+  const registry = await prisma.formRegistry.findUnique({ where: { id: formId }, select: { identityMode: true } });
+  if (registry?.identityMode === 'ANONYMOUS') {
+    return NextResponse.json(
+      { error: 'ANONYMOUS_FORM', message: '익명(ANONYMOUS) 양식지는 개인화 응답 링크를 발급할 수 없습니다.' },
+      { status: 400 }
+    );
+  }
+
   const config = await prisma.systemConfig.findUnique({ where: { id: 'default' } });
   const baseUrl = config?.publicBaseUrl || request.nextUrl.origin;
   const expiresAt = body.expiresAt

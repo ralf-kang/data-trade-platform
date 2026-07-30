@@ -74,6 +74,14 @@ export interface WordCloudScope {
   formIds: string[];
   /** formId -> 분석할 문항 id 목록. 지정하지 않은 폼은 모든 자유서술 문항을 쓴다. */
   fieldIdsByForm?: Record<string, string[]>;
+  /**
+   * 개인정보취급자 k=5 우회 모드 요청(§identityMode 설계 — 인증 모드 전용).
+   * 호출부가 매 요청마다 명시적으로 켜야 한다(한 번 켠 뒤 계속 유지되지 않음) —
+   * 우회는 재식별 위험을 키우는 조작이므로, 매번 다시 의식적으로 선택하게 한다.
+   * 실제로 적용되려면 폼이 AUTHENTICATED 모드이고, 폼 제작자가 개인정보취급자
+   * 승인을 받은 상태여야 한다(둘 다 아니면 이 값은 조용히 무시된다).
+   */
+  piiBypassAck?: boolean;
 }
 
 export interface WordCloudResult {
@@ -81,10 +89,12 @@ export interface WordCloudResult {
   fieldsUsed: string[];
   formsUsed: string[];
   maskedForms: string[];
+  /** k=5 우회가 실제로 적용된 폼 — 감사 로그·UI 경고에 쓴다. */
+  piiBypassForms: string[];
 }
 
-async function collectFastPath(formId: string, fieldId: string): Promise<Map<string, number>> {
-  const buckets = await aggregateNoriWordFrequency([formId], fieldId, K_THRESHOLD, 200);
+async function collectFastPath(formId: string, fieldId: string, kThreshold: number): Promise<Map<string, number>> {
+  const buckets = await aggregateNoriWordFrequency([formId], fieldId, kThreshold, 200);
   const map = new Map<string, number>();
   for (const b of buckets) {
     if (isNoiseToken(b.term)) continue;
@@ -96,7 +106,8 @@ async function collectFastPath(formId: string, fieldId: string): Promise<Map<str
 async function collectMaskedPath(
   formId: string,
   fieldId: string,
-  template: { fields: Array<{ id: string; anonymous?: boolean; type: string }> }
+  template: { fields: Array<{ id: string; anonymous?: boolean; type: string }> },
+  kThreshold: number
 ): Promise<Map<string, number>> {
   const collected: Array<{ submissionId: string; campaignId?: string; data: Record<string, unknown> }> = [];
   let page = 1;
@@ -126,7 +137,7 @@ async function collectMaskedPath(
 
   // k 게이트 — 마스킹 경로는 ES min_doc_count로 걸 수 없으므로 여기서 직접 적용한다.
   for (const [term, count] of docFrequency) {
-    if (count < K_THRESHOLD) docFrequency.delete(term);
+    if (count < kThreshold) docFrequency.delete(term);
   }
   return docFrequency;
 }
@@ -136,13 +147,14 @@ export async function buildWordCloud(scope: WordCloudScope, maxWords = DEFAULT_M
   const fieldsUsed = new Set<string>();
   const formsUsed: string[] = [];
   const maskedForms: string[] = [];
+  const piiBypassForms: string[] = [];
 
   for (const formId of scope.formIds) {
     const [template, registry] = await Promise.all([
       getFormTemplate(formId),
       prisma.formRegistry.findUnique({
         where: { id: formId },
-        select: { authorHadPrivacyAuth: true, maskingExemptedAt: true },
+        select: { authorHadPrivacyAuth: true, maskingExemptedAt: true, identityMode: true },
       }),
     ]);
     if (!template) continue;
@@ -160,11 +172,19 @@ export async function buildWordCloud(scope: WordCloudScope, maxWords = DEFAULT_M
     const masked = !!registry && shouldMaskForm(registry);
     if (masked) maskedForms.push(formId);
 
+    // 개인정보취급자 k=5 우회 — 인증(AUTHENTICATED) 양식지이고, 제작자가 개인정보취급자
+    // 승인을 받은 상태이고, 호출부가 이번 요청에서 명시적으로 우회를 요청했을 때만.
+    // 셋 중 하나라도 아니면 항상 K_THRESHOLD(5)로 조용히 되돌아간다.
+    const bypassEligible =
+      !!scope.piiBypassAck && registry?.identityMode === 'AUTHENTICATED' && !!registry?.authorHadPrivacyAuth;
+    if (bypassEligible) piiBypassForms.push(formId);
+    const kThreshold = bypassEligible ? 1 : K_THRESHOLD;
+
     for (const field of freeTextFields) {
       fieldsUsed.add(field.label);
       const perFieldCounts = masked
-        ? await collectMaskedPath(formId, field.id, template)
-        : await collectFastPath(formId, field.id);
+        ? await collectMaskedPath(formId, field.id, template, kThreshold)
+        : await collectFastPath(formId, field.id, kThreshold);
       for (const [term, count] of perFieldCounts) {
         merged.set(term, (merged.get(term) ?? 0) + count);
       }
@@ -176,5 +196,5 @@ export async function buildWordCloud(scope: WordCloudScope, maxWords = DEFAULT_M
     .slice(0, maxWords)
     .map(([text, count]) => ({ text, count }));
 
-  return { words, fieldsUsed: [...fieldsUsed], formsUsed, maskedForms };
+  return { words, fieldsUsed: [...fieldsUsed], formsUsed, maskedForms, piiBypassForms };
 }

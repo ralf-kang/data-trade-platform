@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Cloud, Info, ShieldCheck } from 'lucide-react';
+import { Cloud, Info, ShieldCheck, Unlock } from 'lucide-react';
 import { WordCloud } from '@isoterik/react-word-cloud';
 
 interface FormScopeOption {
@@ -16,6 +16,7 @@ interface WordCloudResult {
   fieldsUsed: string[];
   formsUsed: string[];
   maskedForms: string[];
+  piiBypassForms: string[];
 }
 
 const PALETTE = ['#4f46e5', '#0ea5e9', '#059669', '#d97706', '#dc2626', '#7c3aed', '#0891b2'];
@@ -36,6 +37,9 @@ export default function WordCloudPage() {
   const [result, setResult] = useState<WordCloudResult | null>(null);
   const [loadingResult, setLoadingResult] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 개인정보취급자 k=5 우회 모드 — 매 조회마다 다시 의식적으로 켜야 한다(§identityMode 설계).
+  // AUTHENTICATED 모드가 아니거나 개인정보취급자 승인이 없는 폼에는 조용히 적용되지 않는다.
+  const [piiBypass, setPiiBypass] = useState(false);
 
   useEffect(() => {
     fetch('/api/admin/wordcloud/scope')
@@ -74,7 +78,7 @@ export default function WordCloudPage() {
       const res = await fetch('/api/admin/wordcloud', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formIds: activeForms.map((f) => f.formId), fieldIdsByForm }),
+        body: JSON.stringify({ formIds: activeForms.map((f) => f.formId), fieldIdsByForm, piiBypassAck: piiBypass }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -150,13 +154,36 @@ export default function WordCloudPage() {
             </div>
           )}
 
-          <button
-            onClick={handleRun}
-            disabled={activeForms.length === 0 || loadingResult}
-            className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 disabled:opacity-50"
-          >
-            {loadingResult ? '집계 중...' : '다시 집계'}
-          </button>
+          <div className="flex items-center justify-between gap-3">
+            <label className="flex items-center gap-1.5 text-sm text-indigo-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={piiBypass}
+                onChange={(e) => {
+                  const next = e.target.checked;
+                  if (next) {
+                    const ok = window.confirm(
+                      '개인정보취급자 k=5 우회 모드를 켭니다.\n\n' +
+                        '인증(AUTHENTICATED) 양식지 중 본인이 개인정보취급자 승인을 받은 폼에 한해, ' +
+                        '응답 5건 미만이라 평소엔 가려지는 희소 단어까지 노출됩니다 — 개별 응답자를 ' +
+                        '특정할 수 있는 재식별 위험이 커집니다. 이 조회는 감사 로그에 기록됩니다.\n\n' +
+                        '계속하시겠습니까?'
+                    );
+                    if (!ok) return;
+                  }
+                  setPiiBypass(next);
+                }}
+              />
+              <Unlock className="w-3.5 h-3.5" /> 개인정보취급자 k=5 우회 모드
+            </label>
+            <button
+              onClick={handleRun}
+              disabled={activeForms.length === 0 || loadingResult}
+              className="px-4 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {loadingResult ? '집계 중...' : '다시 집계'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -179,6 +206,14 @@ export default function WordCloudPage() {
                   <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0" />
                   마스킹 대상 양식지({result.maskedForms.length}건)가 포함되어 있습니다. 마스킹 처리된 응답은
                   원문 대신 자동으로 제외되어 집계됩니다.
+                </div>
+              )}
+
+              {result.piiBypassForms.length > 0 && (
+                <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-3 text-sm text-rose-800 flex items-start gap-2">
+                  <Unlock className="w-4 h-4 mt-0.5 shrink-0" />
+                  개인정보취급자 우회 모드가 {result.piiBypassForms.length}건의 양식지에 적용되어, 응답 5건
+                  미만인 희소 단어까지 포함되었습니다. 이 조회는 감사 로그에 기록되었습니다.
                 </div>
               )}
 
@@ -205,7 +240,9 @@ export default function WordCloudPage() {
                 <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                 <span>
                   대상 양식지 {result.formsUsed.length}건 · 집계 문항: {result.fieldsUsed.length ? result.fieldsUsed.join(', ') : '없음'} ·
-                  한국어 형태소 분석(Nori) 적용, 응답 5건 미만인 단어는 제외됩니다.
+                  한국어 형태소 분석(Nori) 적용, {result.piiBypassForms.length > 0
+                    ? '우회 적용된 폼을 제외하면 응답 5건 미만인 단어는 제외됩니다.'
+                    : '응답 5건 미만인 단어는 제외됩니다.'}
                 </span>
               </div>
             </>

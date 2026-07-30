@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser, requireAdmin } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { buildWordCloud } from '@/lib/services/wordCloudService';
+import { logAudit } from '@/lib/services/auditService';
 
 // 범위 지정형 워드클라우드 — 요청에 담긴 formIds를 그대로 신뢰하지 않고, 실제로
 // 본인 소유인 양식지만 걸러낸다 (canAccessFormData와 같은 원칙: 남의 양식지는 조회 불가).
@@ -29,6 +30,19 @@ export async function POST(request: NextRequest) {
   const fieldIdsByForm =
     body.fieldIdsByForm && typeof body.fieldIdsByForm === 'object' ? body.fieldIdsByForm : undefined;
 
-  const result = await buildWordCloud({ formIds, fieldIdsByForm });
+  const result = await buildWordCloud({ formIds, fieldIdsByForm, piiBypassAck: !!body.piiBypassAck });
+
+  // 우회가 실제로 적용된 폼이 있으면 매번 감사 로그를 남긴다 — k-익명성 게이트를 낮춘
+  // 조회는 "권한이 있다"만으로는 부족하고, 언제 누가 실제로 무엇을 봤는지 남아야 한다.
+  if (result.piiBypassForms.length > 0) {
+    await logAudit({
+      userEmail: actor.email,
+      action: 'WORDCLOUD_PII_BYPASS',
+      target: `Forms [${result.piiBypassForms.join(', ')}]`,
+      details: `개인정보취급자 k=5 우회 모드로 워드클라우드 조회 (${result.piiBypassForms.length}건)`,
+      severity: 'warning',
+    });
+  }
+
   return NextResponse.json(result);
 }
