@@ -1,49 +1,47 @@
-import { listSubmissions as esListSubmissions, getFormTemplate } from '@/lib/elasticsearch';
+import { getFormTemplate, aggregateNoriWordFrequency, analyzeWithNori, listSubmissions as esListSubmissions } from '@/lib/elasticsearch';
 import { prisma } from '@/lib/db';
 import { shouldMaskForm, maskSubmissionList } from './maskingService';
+import { listForms } from './formService';
+import type { ActingUser } from '@/lib/auth';
 
 /**
  * 워드클라우드 — 자유서술형 응답에서 자주 등장하는 단어를 시각화한다.
+ * (docs/워드클라우드-설계.md 참고 — §3의 구현 결함 수정 + §5의 외부 패키지 채택 반영판)
  *
- * 자유서술(text/textarea/regex-input)은 마스킹 계층(maskingService)이 항상 마스킹
- * 대상으로 보는 바로 그 필드 타입이다. "화면에서만 가리면 API로 우회된다"는 원칙과
- * 대칭으로, 워드클라우드도 별도 우회 경로가 되지 않도록 반드시 masking을 거친
- * 데이터에서만 단어를 뽑는다 — shouldMaskForm(registry)이 true인 폼은 원문 대신
- * 마스킹 플레이스홀더만 보게 되므로, 아래 토큰화 단계에서 그 플레이스홀더 문구를
- * 걸러내 워드클라우드에 "마스킹됨" 같은 가짜 단어가 섞이지 않게 한다.
+ * 렌더링은 @isoterik/react-word-cloud, 한국어 형태소 분석은 Elasticsearch의
+ * analysis-nori 플러그인(§5-2)에 맡긴다 — 이 서비스가 하는 일은 "어떤 범위의 데이터를,
+ * 어떤 안전장치로 집계할 것인가"뿐이다.
  *
- * 형태소 분석기가 없어 공백 기준으로만 나눈다 — 한국어 조사가 단어에 붙어 있으면
- * (예: "품질이") 분리되지 않는 한계가 있다. 정밀 분석이 필요해지면 형태소 분석기
- * 도입을 검토할 것.
+ * 두 갈래 경로:
+ *  - **마스킹 대상이 아닌 폼**: ES가 색인 시점에 이미 `.nori` 서브필드로 형태소 분석까지
+ *    마쳐 두었으므로, terms 집계 한 번으로 끝난다 (aggregateNoriWordFrequency).
+ *  - **마스킹 대상 폼**: 원문이 색인된 그대로 집계하면 마스킹을 우회하게 되므로,
+ *    반드시 마스킹을 거친 값만 꺼내(maskSubmissionList) 그 값을 `_analyze` API로
+ *    토큰화한다(analyzeWithNori) — 색인을 거치지 않으므로 마스킹 우회가 아니다.
+ * 두 경로 모두 "빈도 = 등장한 서로 다른 응답 수(document frequency)"로 통일해서 합산한다
+ * (W1) — 한 사람의 반복이 클라우드를 왜곡하지 않고, k-익명성 게이트(W2)를 직접 걸 수 있다.
  */
 
 const FREE_TEXT_TYPES = new Set(['text', 'textarea', 'regex-input']);
 const SCAN_PAGE_SIZE = 200;
-// CSV 추출(EXPORT_HARD_CAP=5000)보다 낮게 잡는다 — 워드클라우드는 빈도의 통계적
-// 근사치면 충분하고, 전수 스캔은 화면 반응성 대비 이득이 적다.
 const SCAN_HARD_CAP = 2000;
-const MAX_WORDS = 80;
+const K_THRESHOLD = 5; // §워드클라우드-설계 §9-2 — 온톨로지 설계서와 동일한 값으로 확정
+const DEFAULT_MAX_WORDS = 80;
 const MIN_WORD_LENGTH = 2;
 
 const REDACTION_MARKERS = ['마스킹됨', '다른 응답값과의 조합'];
 
 const STOPWORDS = new Set([
-  // 한국어 — 독립된 토큰으로 떨어지는 흔한 불용어(조사 결합형까지는 못 거름)
   '그리고', '그러나', '하지만', '그래서', '그런데', '합니다', '입니다', '있습니다', '없습니다',
   '이것', '저것', '그것', '너무', '정말', '매우', '조금', '많이', '그냥', '아주',
-  '등', '및', '경우', '관련', '대한', '통해', '때문에', '같은', '만약', '위해',
-  '이', '가', '은', '는', '을', '를', '의', '에', '와', '과', '도', '만', '로', '으로',
-  // English
-  'the', 'a', 'an', 'and', 'or', 'but', 'is', 'are', 'was', 'were', 'be', 'to', 'of',
-  'in', 'on', 'for', 'with', 'this', 'that', 'it', 'as', 'at', 'by', 'from',
+  '등', '및', '경우', '관련', '대한', '통해', '때문', '같은', '만약', '위해',
 ]);
 
-function tokenize(text: string): string[] {
-  return text
-    .toLowerCase()
-    .split(/[\s,.!?;:()[\]{}"'“”‘’…/\\|~`@#$%^&*+=<>_-]+/)
-    .map((t) => t.trim())
-    .filter((t) => t.length >= MIN_WORD_LENGTH);
+function isNoiseToken(token: string): boolean {
+  if (token.length < MIN_WORD_LENGTH) return true;
+  if (STOPWORDS.has(token)) return true;
+  if (/^[0-9]+$/.test(token)) return true; // 순수 숫자열 — 개인식별자(전화번호 조각 등) 위험
+  return false;
 }
 
 export interface WordCloudEntry {
@@ -51,32 +49,55 @@ export interface WordCloudEntry {
   count: number;
 }
 
-export interface WordCloudResult {
-  words: WordCloudEntry[];
-  /** 워드클라우드 계산에 실제로 쓰인 응답 수(스캔 상한에 걸리면 total보다 작을 수 있음). */
-  sampledCount: number;
-  totalCount: number;
-  fieldsUsed: string[];
-  masked: boolean;
+export interface FormScopeOption {
+  formId: string;
+  title: string;
+  fields: Array<{ id: string; label: string }>;
 }
 
-export async function buildFormWordCloud(formId: string): Promise<WordCloudResult> {
-  const [template, registry] = await Promise.all([
-    getFormTemplate(formId),
-    prisma.formRegistry.findUnique({
-      where: { id: formId },
-      select: { authorHadPrivacyAuth: true, maskingExemptedAt: true },
-    }),
-  ]);
-  if (!template) return { words: [], sampledCount: 0, totalCount: 0, fieldsUsed: [], masked: false };
+/** 범위 설정 툴바(§4-2)가 쓰는 목록 — 본인이 제작(소유)한 양식지 중 자유서술형 문항이 있는 것만. */
+export async function listOwnedTextForms(actor: ActingUser): Promise<FormScopeOption[]> {
+  const forms = await listForms({ ownerId: actor.id });
+  return forms
+    .map((f) => ({
+      formId: f.id,
+      title: f.title,
+      fields: f.fields
+        .filter((field) => !field.anonymous && FREE_TEXT_TYPES.has(field.type))
+        .map((field) => ({ id: field.id, label: field.label })),
+    }))
+    .filter((f) => f.fields.length > 0);
+}
 
-  // 익명 문항은 이 화면에서도 다루지 않는다 — 본인에게조차 보여주지 않는 원칙(§멤버
-  // 경험 설계)과 동일하게, 관리자 화면이라 해도 예외를 두지 않는다.
-  const freeTextFields = template.fields.filter((f) => !f.anonymous && FREE_TEXT_TYPES.has(f.type));
-  if (freeTextFields.length === 0) {
-    return { words: [], sampledCount: 0, totalCount: 0, fieldsUsed: [], masked: false };
+export interface WordCloudScope {
+  /** 대상 양식지 — "내가 만든 양식지 전체"면 여러 개, "특정 양식지"면 하나. */
+  formIds: string[];
+  /** formId -> 분석할 문항 id 목록. 지정하지 않은 폼은 모든 자유서술 문항을 쓴다. */
+  fieldIdsByForm?: Record<string, string[]>;
+}
+
+export interface WordCloudResult {
+  words: WordCloudEntry[];
+  fieldsUsed: string[];
+  formsUsed: string[];
+  maskedForms: string[];
+}
+
+async function collectFastPath(formId: string, fieldId: string): Promise<Map<string, number>> {
+  const buckets = await aggregateNoriWordFrequency([formId], fieldId, K_THRESHOLD, 200);
+  const map = new Map<string, number>();
+  for (const b of buckets) {
+    if (isNoiseToken(b.term)) continue;
+    map.set(b.term, (map.get(b.term) ?? 0) + b.docCount);
   }
+  return map;
+}
 
+async function collectMaskedPath(
+  formId: string,
+  fieldId: string,
+  template: { fields: Array<{ id: string; anonymous?: boolean; type: string }> }
+): Promise<Map<string, number>> {
   const collected: Array<{ submissionId: string; campaignId?: string; data: Record<string, unknown> }> = [];
   let page = 1;
   let total = 0;
@@ -88,32 +109,72 @@ export async function buildFormWordCloud(formId: string): Promise<WordCloudResul
     page += 1;
   }
 
-  const masked = !!registry && shouldMaskForm(registry);
-  const items = masked ? await maskSubmissionList(formId, template.fields, collected) : collected;
+  const masked = await maskSubmissionList(formId, template.fields as never, collected);
 
-  const freq = new Map<string, number>();
-  for (const it of items) {
-    for (const f of freeTextFields) {
-      const value = it.data[f.id];
-      if (typeof value !== 'string') continue;
-      if (REDACTION_MARKERS.some((m) => value.includes(m))) continue;
-      for (const token of tokenize(value)) {
-        if (STOPWORDS.has(token)) continue;
-        freq.set(token, (freq.get(token) ?? 0) + 1);
+  // 응답 수(document frequency) 기준 — 한 응답 안에서 같은 단어가 여러 번 나와도 1로만 센다.
+  const docFrequency = new Map<string, number>();
+  for (const it of masked) {
+    const value = it.data[fieldId];
+    if (typeof value !== 'string') continue;
+    if (REDACTION_MARKERS.some((m) => value.includes(m))) continue;
+    const tokens = await analyzeWithNori(value);
+    const uniqueInThisDoc = new Set(tokens.filter((t) => !isNoiseToken(t)));
+    for (const token of uniqueInThisDoc) {
+      docFrequency.set(token, (docFrequency.get(token) ?? 0) + 1);
+    }
+  }
+
+  // k 게이트 — 마스킹 경로는 ES min_doc_count로 걸 수 없으므로 여기서 직접 적용한다.
+  for (const [term, count] of docFrequency) {
+    if (count < K_THRESHOLD) docFrequency.delete(term);
+  }
+  return docFrequency;
+}
+
+export async function buildWordCloud(scope: WordCloudScope, maxWords = DEFAULT_MAX_WORDS): Promise<WordCloudResult> {
+  const merged = new Map<string, number>();
+  const fieldsUsed = new Set<string>();
+  const formsUsed: string[] = [];
+  const maskedForms: string[] = [];
+
+  for (const formId of scope.formIds) {
+    const [template, registry] = await Promise.all([
+      getFormTemplate(formId),
+      prisma.formRegistry.findUnique({
+        where: { id: formId },
+        select: { authorHadPrivacyAuth: true, maskingExemptedAt: true },
+      }),
+    ]);
+    if (!template) continue;
+
+    const requestedFieldIds = scope.fieldIdsByForm?.[formId];
+    const freeTextFields = template.fields.filter(
+      (f) =>
+        !f.anonymous &&
+        FREE_TEXT_TYPES.has(f.type) &&
+        (!requestedFieldIds || requestedFieldIds.includes(f.id))
+    );
+    if (freeTextFields.length === 0) continue;
+
+    formsUsed.push(formId);
+    const masked = !!registry && shouldMaskForm(registry);
+    if (masked) maskedForms.push(formId);
+
+    for (const field of freeTextFields) {
+      fieldsUsed.add(field.label);
+      const perFieldCounts = masked
+        ? await collectMaskedPath(formId, field.id, template)
+        : await collectFastPath(formId, field.id);
+      for (const [term, count] of perFieldCounts) {
+        merged.set(term, (merged.get(term) ?? 0) + count);
       }
     }
   }
 
-  const words = [...freq.entries()]
+  const words = [...merged.entries()]
     .sort((a, b) => b[1] - a[1])
-    .slice(0, MAX_WORDS)
+    .slice(0, maxWords)
     .map(([text, count]) => ({ text, count }));
 
-  return {
-    words,
-    sampledCount: items.length,
-    totalCount: total,
-    fieldsUsed: freeTextFields.map((f) => f.label),
-    masked,
-  };
+  return { words, fieldsUsed: [...fieldsUsed], formsUsed, maskedForms };
 }

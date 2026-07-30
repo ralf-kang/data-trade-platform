@@ -14,7 +14,8 @@ import {
   Settings,
   Database,
   UserCog,
-  Network
+  Network,
+  Cloud
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { AccountMenu } from './AccountMenu';
@@ -31,6 +32,7 @@ export function AdminSidebar({ role = 'admin' }: AdminSidebarProps) {
     { name: '내 양식 관리', href: '/admin/templates', icon: FileText },
     { name: '배포 URL 관리', href: '/admin/templates/urls', icon: Globe },
     { name: '제출 데이터 조회', href: '/admin/data', icon: Database },
+    { name: '워드클라우드', href: '/admin/wordcloud', icon: Cloud },
     { name: '공유 신청 및 승인함', href: '/admin/share-requests', icon: Users },
   ];
 

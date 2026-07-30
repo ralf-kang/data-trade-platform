@@ -1,4 +1,5 @@
 import { Client } from '@elastic/elasticsearch';
+import type { MappingTypeMapping, IndicesIndexSettings } from '@elastic/elasticsearch/lib/api/types';
 import type { FormField } from '@/components/builder/types';
 
 // Elasticsearch Client Initialization
@@ -99,7 +100,25 @@ const FORM_TEMPLATE_MAPPING = {
   },
 } as const;
 
-const SUBMISSION_MAPPING = {
+// 워드클라우드(§워드클라우드-설계 §5-2)의 한국어 형태소 분석 전용 커스텀 애널라이저.
+// docker/elasticsearch/Dockerfile이 analysis-nori 플러그인을 설치한 이미지를 전제로 한다.
+// 조사(J)·어미(E) 등은 nori_part_of_speech 기본 stoptags가 제거하고, 명사 위주로 더
+// 좁히기 위해 nori_readingform + 길이 필터를 추가한다.
+export const NORI_ANALYZER_NAME = 'nori_wordcloud';
+
+const SUBMISSIONS_SETTINGS: IndicesIndexSettings = {
+  analysis: {
+    analyzer: {
+      [NORI_ANALYZER_NAME]: {
+        type: 'custom',
+        tokenizer: 'nori_tokenizer',
+        filter: ['nori_part_of_speech', 'nori_readingform', 'lowercase'],
+      },
+    },
+  },
+};
+
+const SUBMISSION_MAPPING: MappingTypeMapping = {
   properties: {
     formId: { type: 'keyword' },
     submissionId: { type: 'keyword' },
@@ -114,7 +133,27 @@ const SUBMISSION_MAPPING = {
     // col1, col2 ... 처럼 폼별로 늘어나는 응답 컬럼 — 동적 매핑.
     data: { type: 'object', dynamic: true },
   },
-} as const;
+  // dynamic_templates는 object 필드 안이 아니라 매핑 최상위에만 올 수 있다(ES 제약 —
+  // object 내부에 넣으면 "unsupported parameters" 매핑 에러). path_match는 문서
+  // 루트 기준 절대경로라 "data.*"로 써야 한다. data.* 아래 모든 문자열 필드에 .nori
+  // 서브필드(형태소 분석 + fielddata 활성화)를 자동으로 붙여, 워드클라우드 집계(terms
+  // agg)가 그 서브필드를 바로 쓸 수 있게 한다.
+  dynamic_templates: [
+    {
+      korean_text_fields: {
+        path_match: 'data.*',
+        match_mapping_type: 'string',
+        mapping: {
+          type: 'text',
+          fields: {
+            keyword: { type: 'keyword', ignore_above: 256 },
+            nori: { type: 'text', analyzer: NORI_ANALYZER_NAME, fielddata: true },
+          },
+        },
+      },
+    },
+  ],
+};
 
 const ANON_SUBMISSION_MAPPING = {
   properties: {
@@ -154,7 +193,8 @@ export async function ensureIndices(): Promise<void> {
       ] as const) {
         const exists = await elasticClient.indices.exists({ index });
         if (!exists) {
-          await elasticClient.indices.create({ index, mappings });
+          const settings = index === INDEX_NAMES.SUBMISSIONS ? SUBMISSIONS_SETTINGS : undefined;
+          await elasticClient.indices.create({ index, mappings, settings });
         } else {
           await elasticClient.indices
             .putMapping({ index, ...mappings })
@@ -522,6 +562,63 @@ export async function countQuasiIdentifierCombinations(
   type Bucket = { key: Record<string, unknown>; doc_count: number };
   const agg = res.aggregations?.combos as { buckets: Bucket[] } | undefined;
   return (agg?.buckets ?? []).map((b) => ({ key: b.key, count: b.doc_count }));
+}
+
+// ---------------------------------------------------------------------------
+// 워드클라우드 — 한국어 형태소 분석(Nori) 집계
+// ---------------------------------------------------------------------------
+
+/**
+ * 마스킹 대상이 아닌 폼의 자유서술 필드에 한해 쓰는 빠른 경로 — ES가 이미 색인 시점에
+ * `.nori` 서브필드로 형태소 분석까지 마쳐 두었으므로, terms 집계 하나로 "이 단어가 등장한
+ * 서로 다른 응답 수"(document frequency)를 그대로 얻는다. terms 집계의 버킷 doc_count는
+ * 정확히 이 문서 수를 의미하므로 별도 계산이 필요 없다.
+ *
+ * ⚠️ 마스킹 대상 폼에는 이 함수를 쓰면 안 된다 — 원문이 색인된 그대로 집계되어 마스킹을
+ * 우회하게 된다. 그 경우는 analyzeWithNori()로 마스킹 이후 텍스트만 토큰화해야 한다.
+ */
+export async function aggregateNoriWordFrequency(
+  formIds: string[],
+  fieldId: string,
+  minDocCount: number,
+  maxTerms: number
+): Promise<Array<{ term: string; docCount: number }>> {
+  if (formIds.length === 0) return [];
+  await ensureIndices();
+
+  const res = await elasticClient.search({
+    index: INDEX_NAMES.SUBMISSIONS,
+    size: 0,
+    query: { bool: { filter: [{ terms: { formId: formIds } }] } },
+    aggs: {
+      words: {
+        terms: {
+          field: `data.${fieldId}.nori`,
+          size: maxTerms,
+          min_doc_count: minDocCount,
+        },
+      },
+    },
+  });
+
+  type Bucket = { key: string; doc_count: number };
+  const agg = res.aggregations?.words as { buckets: Bucket[] } | undefined;
+  return (agg?.buckets ?? []).map((b) => ({ term: b.key, docCount: b.doc_count }));
+}
+
+/**
+ * 색인된 문서가 아니라 **임의의 문자열**(마스킹 적용 후의 텍스트)을 같은 Nori 애널라이저로
+ * 토큰화한다. `_analyze` API는 색인을 거치지 않으므로, 마스킹된 텍스트를 절대 ES에
+ * 다시 쓰지 않고도(=마스킹 우회 없이) 같은 형태소 분석 품질을 얻을 수 있다.
+ */
+export async function analyzeWithNori(text: string): Promise<string[]> {
+  if (!text.trim()) return [];
+  const res = await elasticClient.indices.analyze({
+    index: INDEX_NAMES.SUBMISSIONS,
+    analyzer: NORI_ANALYZER_NAME,
+    text,
+  });
+  return (res.tokens ?? []).map((t) => t.token);
 }
 
 export interface ListSubmissionsParams {
