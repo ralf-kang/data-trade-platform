@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { LayoutDashboard, FileText, TrendingUp, Coins, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, FileText, TrendingUp, Coins, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { AccountMenu } from '@/components/layout/AccountMenu';
 
 /**
@@ -12,6 +12,7 @@ export default function MemberLayout({ children }: { children: React.ReactNode }
   const nav = [
     { href: '/me', label: '홈', icon: LayoutDashboard },
     { href: '/me/responses', label: '내 응답', icon: FileText },
+    { href: '/me/corrections', label: '수정 요청', icon: AlertTriangle },
     { href: '/me/points', label: '포인트', icon: Coins },
     { href: '/me/author-authorization', label: '제작 자격', icon: ShieldCheck },
   ];

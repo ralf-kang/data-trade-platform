@@ -14,6 +14,7 @@ import { getActiveCampaign } from '@/lib/services/campaignService';
 import type { RespondentIdentity } from '@/lib/respondent';
 import { logAudit } from '@/lib/services/auditService';
 import { notifyFormOwner } from '@/lib/services/notificationService';
+import { resolveCorrectionRequestsForSubmission } from '@/lib/services/dataQualityService';
 import type { ActingUser } from '@/lib/auth';
 import { isPlatformAdmin } from '@/lib/auth';
 import type { FormField } from '@/components/builder/types';
@@ -184,6 +185,9 @@ export async function submitFormResponse(
     await prisma.formRegistry
       .update({ where: { id: formId }, data: { submissionCount: { increment: 1 } } })
       .catch(() => undefined);
+  } else {
+    // 재제출 = 수정 — 이 제출 건에 걸려 있던 결측치·이상치 수정 요청을 자동으로 해소한다.
+    await resolveCorrectionRequestsForSubmission(formId, submissionId);
   }
 
   if (anomalies.length > 0) {
