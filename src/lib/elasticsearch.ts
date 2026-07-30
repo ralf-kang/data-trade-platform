@@ -728,6 +728,48 @@ export async function listSubmissions({
   };
 }
 
+/**
+ * 값 사전 제안(데이터 정확성 §5 순위4) — 같은 문항에 과거 들어온 값들 중, 지금 입력 중인
+ * 텍스트와 비슷한 값을 빈도순으로 찾는다. 별도 저장소 없이 이미 색인된 제출 데이터에
+ * ES `fuzzy` 쿼리(편집거리 기반) + `terms` 집계로 즉석에서 계산한다
+ * (docs/데이터품질-검증구간-설계.md §3-3 — "별도 저장소 불필요").
+ */
+export async function suggestFieldValues(
+  formId: string,
+  fieldId: string,
+  query: string,
+  limit = 6
+): Promise<Array<{ value: string; count: number }>> {
+  await ensureIndices();
+  const res = await elasticClient.search({
+    index: INDEX_NAMES.SUBMISSIONS,
+    size: 0,
+    query: {
+      bool: {
+        filter: [{ term: { formId } }],
+        // prefix: 입력을 이어가는 중(예: "한국산" → "한국산업(주)")을 잡는다.
+        // fuzzy: 오탈자가 섞인 거의 완성된 입력(예: "한국산업(주)"의 한 글자 오타)을 잡는다.
+        // 둘은 서로 다른 상황을 겨냥하므로 OR로 묶는다 — 편집거리 하나만으로는 prefix
+        // 케이스처럼 길이 차이가 큰 매칭을 잡지 못한다.
+        should: [
+          { prefix: { [`data.${fieldId}.keyword`]: { value: query } } },
+          { fuzzy: { [`data.${fieldId}.keyword`]: { value: query, fuzziness: 'AUTO', prefix_length: 1 } } },
+        ],
+        minimum_should_match: 1,
+      },
+    },
+    aggs: {
+      values: { terms: { field: `data.${fieldId}.keyword`, size: limit + 1 } }, // +1은 자기 자신과 동일한 값을 거르고도 limit개가 남게 하기 위함
+    },
+  });
+  type Bucket = { key: string; doc_count: number };
+  const agg = res.aggregations?.values as { buckets: Bucket[] } | undefined;
+  return (agg?.buckets ?? [])
+    .map((b) => ({ value: String(b.key), count: b.doc_count }))
+    .filter((b) => b.value && b.value.toLowerCase() !== query.trim().toLowerCase())
+    .slice(0, limit);
+}
+
 export async function getRecentSubmissions(limit = 10): Promise<SubmissionDocument[]> {
   await ensureIndices();
   const res = await elasticClient.search<SubmissionDocument>({

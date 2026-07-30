@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Lock, UserCheck, History, AlertTriangle, ShieldCheck } from 'lucide-react';
 import type { FormListItem } from '@/lib/apiTypes';
 import { buildConsentText } from '@/lib/privacyConsentText';
@@ -324,6 +324,15 @@ export default function PublicFormViewer({ formId, identified, respondentName }:
                     <span className="text-sm text-gray-700">위 내용에 동의합니다</span>
                   </label>
                 </div>
+              ) : field.type === 'text' ? (
+                <TextFieldWithSuggestions
+                  key={`${field.id}-${prefillValue(field.id) ?? ''}`}
+                  formId={formId}
+                  fieldId={field.id}
+                  label={field.label}
+                  required={field.required}
+                  defaultValue={prefillValue(field.id)}
+                />
               ) : (
                 <input
                   key={`${field.id}-${prefillValue(field.id) ?? ''}`}
@@ -350,6 +359,87 @@ export default function PublicFormViewer({ formId, identified, respondentName }:
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 값 사전 제안(데이터 정확성 §5 순위4) — 입력 중 같은 문항의 과거 값 중 비슷한 것을
+// 빈도순으로 보여준다. 서버가 마스킹·익명·개인식별 문항은 이미 걸러서(빈 배열) 주므로
+// 여기서는 받은 값을 그대로 보여주기만 하면 된다.
+// ---------------------------------------------------------------------------
+function TextFieldWithSuggestions({
+  formId,
+  fieldId,
+  label,
+  required,
+  defaultValue,
+}: {
+  formId: string;
+  fieldId: string;
+  label: string;
+  required: boolean;
+  defaultValue?: string;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [open, setOpen] = useState(false);
+
+  const scheduleFetch = (query: string) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    if (!query.trim()) {
+      setSuggestions([]);
+      setOpen(false);
+      return;
+    }
+    timerRef.current = setTimeout(() => {
+      fetch(`/api/forms/${formId}/value-suggestions?fieldId=${encodeURIComponent(fieldId)}&q=${encodeURIComponent(query)}`)
+        .then((res) => (res.ok ? res.json() : { suggestions: [] }))
+        .then((json) => {
+          const next: string[] = json.suggestions ?? [];
+          setSuggestions(next);
+          setOpen(next.length > 0);
+        })
+        .catch(() => undefined);
+    }, 300);
+  };
+
+  return (
+    <div className="relative">
+      <input
+        ref={inputRef}
+        name={fieldId}
+        type="text"
+        defaultValue={defaultValue}
+        required={required}
+        autoComplete="off"
+        onChange={(e) => scheduleFetch(e.target.value)}
+        onBlur={() => setOpen(false)}
+        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+        placeholder={`${label} 입력`}
+      />
+      {open && (
+        <ul className="absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+          {suggestions.map((s) => (
+            <li key={s}>
+              <button
+                type="button"
+                // mousedown에서 막아야 한다 — 그렇지 않으면 클릭 전에 input이 blur되어
+                // onBlur가 목록을 먼저 닫아버리고 클릭 자체가 무효가 된다.
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  if (inputRef.current) inputRef.current.value = s;
+                  setOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 text-gray-700"
+              >
+                {s}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
