@@ -302,6 +302,20 @@ export async function listFormTemplates(): Promise<FormTemplateDocument[]> {
   return res.hits.hits.map((hit) => hit._source).filter((doc): doc is FormTemplateDocument => !!doc);
 }
 
+/**
+ * 데이터 구조 관계도(정형 DB 옆에 비정형 DB도 함께 보여주기 위함)가 쓰는 실시간 문서 수.
+ * Postgres 쪽 노드는 prisma의 `count()`로 재는 것과 대응되는, ES 쪽 카운트다.
+ */
+export async function getIndexDocCounts(): Promise<{ formTemplates: number; submissions: number; anonSubmissions: number }> {
+  await ensureIndices();
+  const [ft, sub, anon] = await Promise.all([
+    elasticClient.count({ index: INDEX_NAMES.FORM_TEMPLATES }),
+    elasticClient.count({ index: INDEX_NAMES.SUBMISSIONS }),
+    elasticClient.count({ index: INDEX_NAMES.ANON_SUBMISSIONS }),
+  ]);
+  return { formTemplates: ft.count, submissions: sub.count, anonSubmissions: anon.count };
+}
+
 export async function upsertFormTemplate(doc: FormTemplateDocument): Promise<void> {
   await ensureIndices();
   await elasticClient.index({
