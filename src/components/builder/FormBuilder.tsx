@@ -8,7 +8,7 @@ import {
   CheckSquare, Calendar, Upload, PenTool,
   Image as ImageIcon, Images, Video, Table, FileBox, MessageSquare, Link as LinkIcon,
   Layers, BellOff, ShieldAlert, Database, FileSpreadsheet, Save, ArrowUp, ArrowDown, Trash2,
-  Smartphone, Monitor, Globe, Regex, MapPin, Star, GripHorizontal, Sparkles, Plus, X, SlidersHorizontal, Lock, KeyRound, ShieldCheck
+  Smartphone, Monitor, Globe, Regex, MapPin, Star, GripHorizontal, Sparkles, Plus, X, SlidersHorizontal, Lock, KeyRound, ShieldCheck, Copy
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AiAutoGenerator from './AiAutoGenerator';
@@ -64,6 +64,10 @@ export default function FormBuilder() {
   const [privacyWarningAck, setPrivacyWarningAck] = useState<string | null>(null);
   // 개인정보 취급자(제작 자격) — 미승인이면 동의서 컴포넌트를 팔레트에서 잠근다.
   const [authorAuthStatus, setAuthorAuthStatus] = useState<'PENDING' | 'APPROVED' | 'SUSPENDED' | 'EXPIRED' | 'REVOKED' | 'NONE'>('NONE');
+  // 비슷한 양식지 추천(§군집 기반 제안 — "제작자에게" 항목). 신규 작성 중일 때만 의미가
+  // 있다 — 이미 있는 양식을 수정 중이면 "비슷한 게 있다"는 안내 자체가 무의미하다.
+  const [similarForms, setSimilarForms] = useState<Array<{ formId: string; title: string; description: string; fieldCount: number }>>([]);
+  const [similarFormsDismissed, setSimilarFormsDismissed] = useState(false);
 
   // 개인정보 취급자 자격은 편집 대상 양식과 무관하게 "지금 로그인한 사람"의 상태다.
   useEffect(() => {
@@ -96,6 +100,25 @@ export default function FormBuilder() {
       cancelled = true;
     };
   }, [id]);
+
+  // 비슷한 양식지 추천 — 신규 작성 중, 제목을 어느 정도 입력했을 때만 조회한다.
+  // 이미 있는 양식을 열어 수정하는 중이면(id 존재) 자기 자신과 비교할 이유가 없다.
+  useEffect(() => {
+    if (id) return;
+    const title = template.title?.trim() ?? '';
+    if (title.length < 2) {
+      setSimilarForms([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams({ title });
+      fetch(`/api/forms/similar?${params.toString()}`)
+        .then((res) => (res.ok ? res.json() : { suggestions: [] }))
+        .then((json) => setSimilarForms(json.suggestions ?? []))
+        .catch(() => undefined);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [id, template.title]);
 
   const fields = template.fields || [];
   const setFields = (newFields: FormField[]) => setTemplate(prev => ({ ...prev, fields: newFields }));
@@ -415,6 +438,40 @@ export default function FormBuilder() {
             <div className="space-y-4 mb-8">
               <input type="text" placeholder="보고서 제목" className="w-full text-3xl font-bold border-0 border-b-2 border-transparent hover:border-gray-200 focus:border-blue-500 outline-none" value={template.title} onChange={(e) => setTemplate({ ...template, title: e.target.value })} />
               <textarea placeholder="보고서 설명" className="w-full text-gray-600 border-0 border-b-2 border-transparent hover:border-gray-200 focus:border-blue-500 outline-none resize-none" value={template.description} onChange={(e) => setTemplate({ ...template, description: e.target.value })} rows={2} />
+
+              {!id && !similarFormsDismissed && similarForms.length > 0 && (
+                <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2 text-indigo-800">
+                      <Copy className="w-4 h-4 mt-0.5 shrink-0" />
+                      <span className="font-medium">비슷한 양식지가 이미 있습니다. 새로 만들기 전에 확인해보세요.</span>
+                    </div>
+                    <button
+                      onClick={() => setSimilarFormsDismissed(true)}
+                      className="text-indigo-400 hover:text-indigo-600 shrink-0"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <ul className="mt-2 space-y-1.5">
+                    {similarForms.map((f) => (
+                      <li key={f.formId}>
+                        <a
+                          href={`/admin/builder?id=${f.formId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-indigo-700 hover:underline"
+                        >
+                          {f.title}
+                        </a>
+                        <span className="text-indigo-400 text-xs ml-1.5">
+                          ({f.fieldCount}개 문항){f.description ? ` — ${f.description}` : ''}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               <div className="flex items-center gap-3 pt-2">
                 <label className="text-xs font-bold text-gray-500 uppercase shrink-0">응답자 신원 요구</label>

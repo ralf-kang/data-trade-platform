@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, AlertTriangle, TrendingDown, TrendingUp, Send, CheckCircle2, BarChart3, Info } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, TrendingDown, TrendingUp, Send, CheckCircle2, BarChart3, Info, Tags } from 'lucide-react';
 
 interface MissingFieldStat {
   fieldId: string;
@@ -44,6 +44,12 @@ interface RepresentativenessWarning {
   message: string;
 }
 
+interface TopicGroup {
+  fieldId: string;
+  label: string;
+  topics: Array<{ keyword: string; count: number }>;
+}
+
 interface QualityReport {
   totalSubmissions: number;
   missing: MissingFieldStat[];
@@ -51,6 +57,7 @@ interface QualityReport {
   fieldStats: FieldDistributionStat[];
   trend: TrendPoint[];
   representativeness: RepresentativenessWarning[];
+  topicGroups: TopicGroup[];
 }
 
 interface CorrectionRequest {
@@ -197,6 +204,35 @@ export default function DataQualityPage() {
                       </li>
                     ))}
                   </ul>
+                </section>
+              )}
+
+              {report.topicGroups.length > 0 && (
+                <section className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 font-bold text-slate-800 text-sm flex items-center gap-2">
+                    <Tags className="w-4 h-4 text-violet-600" /> 주제별 응답 그룹 (자유서술 문항)
+                  </div>
+                  <ul className="divide-y divide-slate-100">
+                    {report.topicGroups.map((g) => (
+                      <li key={g.fieldId} className="px-5 py-3">
+                        <div className="font-medium text-slate-900 text-sm mb-2">{g.label}</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {g.topics.map((t) => (
+                            <span
+                              key={t.keyword}
+                              className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-violet-50 text-violet-700 border border-violet-200"
+                            >
+                              {t.keyword}
+                              <span className="text-violet-400">{t.count}</span>
+                            </span>
+                          ))}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="px-5 py-2 text-[11px] text-slate-400 border-t border-slate-100">
+                    응답 5건 미만인 주제어는 표시되지 않습니다 (워드클라우드와 동일한 재식별 방지 기준).
+                  </div>
                 </section>
               )}
 

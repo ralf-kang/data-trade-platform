@@ -232,6 +232,66 @@ export async function getFormTemplate(formId: string): Promise<FormTemplateDocum
   }
 }
 
+/**
+ * 비슷한 양식지 템플릿 추천(데이터 정확성 §5 순위7, §3-4 표의 "적절" 두 항목 중 하나) —
+ * 새 양식을 만들 때 제목·문항 라벨이 비슷한 기존 양식지를 찾아, 중복 제작을 줄인다.
+ * 응답자 개인정보가 아니라 "양식지 구조"의 유사성이므로 개인정보 보호 제약이 없다 —
+ * ES `more_like_this`로 즉석 계산하고(별도 저장소 불필요, 값 사전과 같은 원칙),
+ * 제목이 짧은 경우가 많아 min_term_freq/min_doc_freq를 1로 낮춰야 결과가 나온다.
+ */
+export async function findSimilarFormTemplates(
+  title: string,
+  fieldLabels: string[],
+  excludeFormId?: string,
+  limit = 3
+): Promise<Array<{ formId: string; title: string; description: string; fieldCount: number }>> {
+  await ensureIndices();
+  if (!title.trim() && fieldLabels.length === 0) return [];
+
+  const should: object[] = [];
+  if (title.trim()) {
+    should.push({
+      more_like_this: {
+        fields: ['title', 'description'],
+        like: [title],
+        min_term_freq: 1,
+        min_doc_freq: 1,
+      },
+    });
+  }
+  if (fieldLabels.length > 0) {
+    should.push({
+      more_like_this: {
+        fields: ['fields.label'],
+        like: [fieldLabels.join(' ')],
+        min_term_freq: 1,
+        min_doc_freq: 1,
+      },
+    });
+  }
+
+  const res = await elasticClient.search<FormTemplateDocument>({
+    index: INDEX_NAMES.FORM_TEMPLATES,
+    size: limit,
+    query: {
+      bool: {
+        ...(excludeFormId ? { must_not: [{ term: { formId: excludeFormId } }] } : {}),
+        should,
+        minimum_should_match: 1,
+      },
+    },
+  });
+
+  return res.hits.hits
+    .filter((h): h is typeof h & { _source: FormTemplateDocument } => !!h._source)
+    .map((h) => ({
+      formId: h._source.formId,
+      title: h._source.title,
+      description: h._source.description,
+      fieldCount: Array.isArray(h._source.fields) ? h._source.fields.length : 0,
+    }));
+}
+
 export async function listFormTemplates(): Promise<FormTemplateDocument[]> {
   await ensureIndices();
   const res = await elasticClient.search<FormTemplateDocument>({
@@ -768,6 +828,37 @@ export async function suggestFieldValues(
     .map((b) => ({ value: String(b.key), count: b.doc_count }))
     .filter((b) => b.value && b.value.toLowerCase() !== query.trim().toLowerCase())
     .slice(0, limit);
+}
+
+/**
+ * 군집 기반 제안(§3-4, "⚠️ 조건부 — 반드시 선택 UI") — 같은 부서 동료들이 이 문항에
+ * 어떻게 답했는지 빈도순으로 찾는다. suggestFieldValues와 달리 전체가 아니라 특정
+ * respondentId 집합(동료 코호트)으로 범위를 좁힌다. 호출부(valueSuggestionService)가
+ * 코호트 크기에 최소 인원 기준을 적용해, 소수 인원의 답이 그대로 드러나지 않게 한다.
+ */
+export async function suggestFieldValuesForRespondents(
+  formId: string,
+  fieldId: string,
+  respondentIds: string[],
+  limit = 3
+): Promise<Array<{ value: string; count: number }>> {
+  if (respondentIds.length === 0) return [];
+  await ensureIndices();
+  const res = await elasticClient.search({
+    index: INDEX_NAMES.SUBMISSIONS,
+    size: 0,
+    query: {
+      bool: {
+        filter: [{ term: { formId } }, { terms: { respondentId: respondentIds } }],
+      },
+    },
+    aggs: {
+      values: { terms: { field: `data.${fieldId}.keyword`, size: limit } },
+    },
+  });
+  type Bucket = { key: string; doc_count: number };
+  const agg = res.aggregations?.values as { buckets: Bucket[] } | undefined;
+  return (agg?.buckets ?? []).filter((b) => b.key).map((b) => ({ value: String(b.key), count: b.doc_count }));
 }
 
 export async function getRecentSubmissions(limit = 10): Promise<SubmissionDocument[]> {

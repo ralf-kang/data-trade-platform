@@ -384,22 +384,29 @@ function TextFieldWithSuggestions({
   const inputRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  // 군집 기반 제안(§3-4) — 같은 부서 동료들의 답. 값 사전과 출처가 다르므로 목록에서
+  // 항상 구분해서 보여준다("반드시 선택 UI"일 뿐 절대 기본값으로 채우지 않는다는 원칙을
+  // 시각적으로도 지킨다 — 값 사전 제안과 섞이면 어느 쪽인지 응답자가 구분할 수 없다).
+  const [clusterSuggestions, setClusterSuggestions] = useState<string[]>([]);
   const [open, setOpen] = useState(false);
 
   const scheduleFetch = (query: string) => {
     if (timerRef.current) clearTimeout(timerRef.current);
     if (!query.trim()) {
       setSuggestions([]);
+      setClusterSuggestions([]);
       setOpen(false);
       return;
     }
     timerRef.current = setTimeout(() => {
       fetch(`/api/forms/${formId}/value-suggestions?fieldId=${encodeURIComponent(fieldId)}&q=${encodeURIComponent(query)}`)
-        .then((res) => (res.ok ? res.json() : { suggestions: [] }))
+        .then((res) => (res.ok ? res.json() : { suggestions: [], clusterSuggestions: [] }))
         .then((json) => {
           const next: string[] = json.suggestions ?? [];
+          const nextCluster: string[] = json.clusterSuggestions ?? [];
           setSuggestions(next);
-          setOpen(next.length > 0);
+          setClusterSuggestions(nextCluster);
+          setOpen(next.length > 0 || nextCluster.length > 0);
         })
         .catch(() => undefined);
     }, 300);
@@ -422,7 +429,7 @@ function TextFieldWithSuggestions({
       {open && (
         <ul className="absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
           {suggestions.map((s) => (
-            <li key={s}>
+            <li key={`dict-${s}`}>
               <button
                 type="button"
                 // mousedown에서 막아야 한다 — 그렇지 않으면 클릭 전에 input이 blur되어
@@ -433,6 +440,26 @@ function TextFieldWithSuggestions({
                   setOpen(false);
                 }}
                 className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 text-gray-700"
+              >
+                {s}
+              </button>
+            </li>
+          ))}
+          {clusterSuggestions.length > 0 && (
+            <li className="px-3 py-1 text-[11px] text-gray-400 bg-gray-50 border-t border-gray-100">
+              같은 부서 다른 분들의 답변
+            </li>
+          )}
+          {clusterSuggestions.map((s) => (
+            <li key={`cluster-${s}`}>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  if (inputRef.current) inputRef.current.value = s;
+                  setOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-amber-50 text-gray-700"
               >
                 {s}
               </button>

@@ -4,6 +4,8 @@ import type { ActingUser } from '@/lib/auth';
 import { logAudit } from './auditService';
 import type { CorrectionRequestIssueType } from '@/generated/prisma/client';
 import { startOfWeek, format } from 'date-fns';
+import { buildWordCloud } from './wordCloudService';
+import type { FormField } from '@/components/builder/types';
 
 /**
  * 결측치·이상치 조회 (docs/데이터품질-검증구간-설계.md §5 순위 5 — "품질 대시보드 + 정정 요청").
@@ -26,6 +28,8 @@ const SKIP_TYPES = new Set([
 ]);
 const NUMERIC_TYPES = new Set(['number']);
 const CHOICE_TYPES = new Set(['select', 'radio', 'checkbox']);
+const FREE_TEXT_TYPES = new Set(['text', 'textarea', 'regex-input']);
+const MAX_TOPICS_PER_FIELD = 8;
 // 이 밑으로 표본이 적으면 통계(사분위수·평균)가 표본 하나에 크게 흔들려 신뢰하기 어렵다 —
 // §5 순위 6 "대표성 경고"에 대응해, 판정을 건너뛰거나 결과에 경고를 붙이는 기준으로 쓴다.
 const MIN_REPRESENTATIVE_SAMPLES = 10;
@@ -78,6 +82,17 @@ export interface RepresentativenessWarning {
   message: string;
 }
 
+/**
+ * 주제별 응답 그룹(§3-4 표 — "자유응답을 주제별로 묶어 분석 화면에 표시", ✅ 매우 적절).
+ * 워드클라우드와 완전히 같은 안전장치(마스킹 인지 + k=5 게이트)를 그대로 재사용한다 —
+ * 자유서술 응답을 집계해서 보여주는 것 자체가 같은 종류의 노출이기 때문이다.
+ */
+export interface TopicGroup {
+  fieldId: string;
+  label: string;
+  topics: Array<{ keyword: string; count: number }>;
+}
+
 export interface QualityReport {
   totalSubmissions: number;
   missing: MissingFieldStat[];
@@ -85,6 +100,22 @@ export interface QualityReport {
   fieldStats: FieldDistributionStat[];
   trend: TrendPoint[];
   representativeness: RepresentativenessWarning[];
+  topicGroups: TopicGroup[];
+}
+
+async function analyzeTopicGroups(formId: string, fields: FormField[]): Promise<TopicGroup[]> {
+  const freeTextFields = fields.filter((f) => !f.anonymous && FREE_TEXT_TYPES.has(f.type));
+  const groups: TopicGroup[] = [];
+  for (const field of freeTextFields) {
+    const result = await buildWordCloud(
+      { formIds: [formId], fieldIdsByForm: { [formId]: [field.id] } },
+      MAX_TOPICS_PER_FIELD
+    );
+    if (result.words.length > 0) {
+      groups.push({ fieldId: field.id, label: field.label, topics: result.words.map((w) => ({ keyword: w.text, count: w.count })) });
+    }
+  }
+  return groups;
 }
 
 async function scanSubmissions(formId: string) {
@@ -109,10 +140,13 @@ function computeStddev(values: number[], avg: number): number {
 
 export async function analyzeFormQuality(formId: string): Promise<QualityReport> {
   const template = await getFormTemplate(formId);
-  if (!template) return { totalSubmissions: 0, missing: [], outliers: [], fieldStats: [], trend: [], representativeness: [] };
+  if (!template) {
+    return { totalSubmissions: 0, missing: [], outliers: [], fieldStats: [], trend: [], representativeness: [], topicGroups: [] };
+  }
 
   const fields = template.fields.filter((f) => !f.anonymous && !SKIP_TYPES.has(f.type));
   const { items, total } = await scanSubmissions(formId);
+  const topicGroups = await analyzeTopicGroups(formId, template.fields);
 
   const missing: MissingFieldStat[] = [];
   const outliers: OutlierEntry[] = [];
@@ -245,7 +279,7 @@ export async function analyzeFormQuality(formId: string): Promise<QualityReport>
       ),
     }));
 
-  return { totalSubmissions: total, missing, outliers, fieldStats, trend, representativeness };
+  return { totalSubmissions: total, missing, outliers, fieldStats, trend, representativeness, topicGroups };
 }
 
 // ---------------------------------------------------------------------------
