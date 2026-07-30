@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { Lock, UserCheck, History, AlertTriangle } from 'lucide-react';
 import type { FormListItem } from '@/lib/apiTypes';
+import { buildConsentText } from '@/lib/privacyConsentText';
 
 interface PrefillEntry {
   value: unknown;
@@ -292,6 +293,22 @@ export default function PublicFormViewer({ formId, identified, respondentName }:
                   required={field.required}
                   className="w-full p-3 border border-dashed border-gray-300 rounded-lg text-sm text-gray-500"
                 />
+              ) : field.type === 'privacy-consent' ? (
+                <div className="space-y-2">
+                  <pre className="whitespace-pre-wrap text-xs leading-relaxed p-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 font-sans max-h-64 overflow-y-auto">
+                    {buildConsentText(field.consentMeta)}
+                  </pre>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      name={field.id}
+                      type="checkbox"
+                      value="동의함(Y)"
+                      required={field.required}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm text-gray-700">위 내용에 동의합니다</span>
+                  </label>
+                </div>
               ) : (
                 <input
                   key={`${field.id}-${prefillValue(field.id) ?? ''}`}

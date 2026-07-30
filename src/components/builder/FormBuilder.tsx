@@ -8,10 +8,11 @@ import {
   CheckSquare, Calendar, Upload, PenTool,
   Image as ImageIcon, Images, Video, Table, FileBox, MessageSquare, Link as LinkIcon,
   Layers, BellOff, ShieldAlert, Database, FileSpreadsheet, Save, ArrowUp, ArrowDown, Trash2,
-  Smartphone, Monitor, Globe, Regex, MapPin, Star, GripHorizontal, Sparkles, Plus, X, SlidersHorizontal, Lock, KeyRound
+  Smartphone, Monitor, Globe, Regex, MapPin, Star, GripHorizontal, Sparkles, Plus, X, SlidersHorizontal, Lock, KeyRound, ShieldCheck
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AiAutoGenerator from './AiAutoGenerator';
+import { buildConsentText, isConsentMetaComplete } from '@/lib/privacyConsentText';
 
 const FIELD_TYPES: { type: FieldType; label: string; icon: React.ReactNode }[] = [
   { type: 'text', label: '단답형', icon: <Type className="w-4 h-4" /> },
@@ -659,6 +660,163 @@ export default function FormBuilder() {
 }
 
 // ---------------------------------------------------------------------------
+// 개인정보 동의서(privacy-consent) 전용 설정 — 법정 필수 고지 항목을 구조화된
+// 값으로 입력받고, 실제 응답자에게 보여줄 문구를 실시간으로 미리보기한다.
+// ---------------------------------------------------------------------------
+function PrivacyConsentSettings({
+  field,
+  onChange,
+}: {
+  field: FormField;
+  onChange: (updates: Partial<FormField>) => void;
+}) {
+  const meta = field.consentMeta;
+  const [showThirdParty, setShowThirdParty] = useState(!!meta?.thirdParty);
+
+  const updateMeta = (patch: Partial<NonNullable<FormField['consentMeta']>>) => {
+    onChange({
+      consentMeta: {
+        purpose: meta?.purpose ?? '',
+        items: meta?.items ?? '',
+        retentionPeriod: meta?.retentionPeriod ?? '',
+        refusalConsequence: meta?.refusalConsequence,
+        thirdParty: meta?.thirdParty,
+        ...patch,
+      },
+    });
+  };
+
+  const updateThirdParty = (patch: Partial<NonNullable<NonNullable<FormField['consentMeta']>['thirdParty']>>) => {
+    updateMeta({
+      thirdParty: {
+        recipient: meta?.thirdParty?.recipient ?? '',
+        purpose: meta?.thirdParty?.purpose ?? '',
+        items: meta?.thirdParty?.items ?? '',
+        retentionPeriod: meta?.thirdParty?.retentionPeriod ?? '',
+        ...patch,
+      },
+    });
+  };
+
+  const complete = isConsentMetaComplete(meta);
+
+  return (
+    <div className="space-y-3 p-3 border border-amber-200 bg-amber-50 rounded">
+      <label className="text-sm font-medium text-gray-700 flex items-center space-x-2">
+        <ShieldCheck className="w-4 h-4 text-amber-600" />
+        <span>개인정보 수집·이용 동의 법정 고지 항목</span>
+      </label>
+      <p className="text-[11px] text-gray-500 leading-relaxed">
+        「개인정보 보호법」 제15조가 요구하는 필수 고지 항목입니다. 아래 입력값으로 응답 화면에 보여줄 동의서 문구가 자동으로 조립됩니다.
+      </p>
+
+      <div>
+        <label className="block text-[11px] font-semibold text-gray-500 uppercase mb-1">수집·이용 목적 *</label>
+        <input
+          type="text"
+          value={meta?.purpose ?? ''}
+          onChange={(e) => updateMeta({ purpose: e.target.value })}
+          className="w-full p-2 border rounded text-sm"
+          placeholder="예: 설문 응답 접수 및 결과 분석"
+        />
+      </div>
+
+      <div>
+        <label className="block text-[11px] font-semibold text-gray-500 uppercase mb-1">수집 항목 *</label>
+        <input
+          type="text"
+          value={meta?.items ?? ''}
+          onChange={(e) => updateMeta({ items: e.target.value })}
+          className="w-full p-2 border rounded text-sm"
+          placeholder="예: 성명, 소속, 연락처"
+        />
+      </div>
+
+      <div>
+        <label className="block text-[11px] font-semibold text-gray-500 uppercase mb-1">보유 및 이용 기간 *</label>
+        <input
+          type="text"
+          value={meta?.retentionPeriod ?? ''}
+          onChange={(e) => updateMeta({ retentionPeriod: e.target.value })}
+          className="w-full p-2 border rounded text-sm"
+          placeholder="예: 수집일로부터 1년"
+        />
+      </div>
+
+      <div>
+        <label className="block text-[11px] font-semibold text-gray-500 uppercase mb-1">동의 거부 시 안내 문구 (선택)</label>
+        <textarea
+          value={meta?.refusalConsequence ?? ''}
+          onChange={(e) => updateMeta({ refusalConsequence: e.target.value || undefined })}
+          className="w-full p-2 border rounded text-sm"
+          rows={2}
+          placeholder="동의를 거부할 권리가 있으며, 동의 거부 시 관련 서비스 이용에 제한이 있을 수 있습니다."
+        />
+      </div>
+
+      <div className="pt-1 border-t border-amber-200">
+        <button
+          type="button"
+          onClick={() => {
+            const next = !showThirdParty;
+            setShowThirdParty(next);
+            if (!next) updateMeta({ thirdParty: undefined });
+          }}
+          className="text-xs font-medium text-amber-700 hover:text-amber-900"
+        >
+          {showThirdParty ? '− 제3자 제공 동의 항목 제거' : '+ 제3자 제공 동의 항목 추가 (해당 시)'}
+        </button>
+
+        {showThirdParty && (
+          <div className="mt-2 space-y-2">
+            <input
+              type="text"
+              value={meta?.thirdParty?.recipient ?? ''}
+              onChange={(e) => updateThirdParty({ recipient: e.target.value })}
+              className="w-full p-2 border rounded text-sm"
+              placeholder="제공받는 자 (예: 협력업체 OOO)"
+            />
+            <input
+              type="text"
+              value={meta?.thirdParty?.purpose ?? ''}
+              onChange={(e) => updateThirdParty({ purpose: e.target.value })}
+              className="w-full p-2 border rounded text-sm"
+              placeholder="제공 목적"
+            />
+            <input
+              type="text"
+              value={meta?.thirdParty?.items ?? ''}
+              onChange={(e) => updateThirdParty({ items: e.target.value })}
+              className="w-full p-2 border rounded text-sm"
+              placeholder="제공 항목"
+            />
+            <input
+              type="text"
+              value={meta?.thirdParty?.retentionPeriod ?? ''}
+              onChange={(e) => updateThirdParty({ retentionPeriod: e.target.value })}
+              className="w-full p-2 border rounded text-sm"
+              placeholder="보유 및 이용 기간"
+            />
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-[11px] font-semibold text-gray-500 uppercase">응답자 화면 미리보기</label>
+          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${complete ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+            {complete ? '필수 항목 입력 완료' : '필수 항목 미입력'}
+          </span>
+        </div>
+        <pre className="whitespace-pre-wrap text-[11px] leading-relaxed p-2.5 bg-white border rounded text-gray-700 font-sans">
+          {buildConsentText(meta)}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // 우측 상세 옵션 패널 — 캔버스에서 다루지 않는 필드별 세부 설정을 모아 편집한다.
 // ---------------------------------------------------------------------------
 function FieldDetailPanel({
@@ -789,6 +947,10 @@ function FieldDetailPanel({
             placeholder="5"
           />
         </div>
+      )}
+
+      {field.type === 'privacy-consent' && (
+        <PrivacyConsentSettings field={field} onChange={onChange} />
       )}
 
       {/* 반복 수집 시 이전 회차 값 처리(3단계). 익명 문항은 지난 값을 찾을 수 없어 제외된다. */}

@@ -311,7 +311,19 @@ export const SAMPLE_FORMS: SampleForm[] = [
     fields: [
       { id: 'f309-1', type: 'text', label: '성명', required: true, nullable: false, width: '50%' },
       { id: 'f309-2', type: 'regex-input', label: '연락처', required: true, nullable: false, regexPattern: '^01(?:0|1|[6-9])-(?:\\d{3}|\\d{4})-\\d{4}$', width: '50%' },
-      { id: 'f309-3', type: 'privacy-consent', label: '개인정보 수집·이용 동의', required: true, nullable: false, width: '100%' },
+      {
+        id: 'f309-3',
+        type: 'privacy-consent',
+        label: '개인정보 수집·이용 동의',
+        required: true,
+        nullable: false,
+        width: '100%',
+        consentMeta: {
+          purpose: '사내 행사 참여자 접수 및 안내',
+          items: '성명, 연락처, 서명',
+          retentionPeriod: '행사 종료일로부터 1년',
+        },
+      },
       { id: 'f309-4', type: 'signature', label: '서명', required: true, nullable: false, width: '100%' },
     ],
     submissions: buildSubmissions('309', randomInt(25, 45), {
@@ -465,7 +477,25 @@ export const SAMPLE_FORMS: SampleForm[] = [
       { id: 'f316-1', type: 'text', label: '성명', required: true, nullable: false, width: '50%' },
       { id: 'f316-2', type: 'text', label: '부서', required: true, nullable: false, width: '50%' },
       { id: 'f316-3', type: 'checkbox', label: '준수 서약 항목', required: true, nullable: false, width: '100%', options: ['외부 반출 금지', '비밀번호 관리', '개인정보 보호', '보안 사고 즉시 보고'] },
-      { id: 'f316-4', type: 'privacy-consent', label: '서약 동의', required: true, nullable: false, width: '100%' },
+      {
+        id: 'f316-4',
+        type: 'privacy-consent',
+        label: '서약 동의',
+        required: true,
+        nullable: false,
+        width: '100%',
+        consentMeta: {
+          purpose: '정보보안 서약 이행 여부 관리 및 보안 사고 대응',
+          items: '성명, 부서, 서약 항목 체크 내역, 서명',
+          retentionPeriod: '재직 기간 및 퇴직 후 3년',
+          thirdParty: {
+            recipient: '정보보안팀 및 감사팀',
+            purpose: '보안 사고 조사 및 내부 감사',
+            items: '성명, 부서, 서약 항목 체크 내역',
+            retentionPeriod: '재직 기간 및 퇴직 후 3년',
+          },
+        },
+      },
       { id: 'f316-5', type: 'signature', label: '서명', required: true, nullable: false, width: '100%' },
     ],
     submissions: buildSubmissions('316', randomInt(30, 50), {

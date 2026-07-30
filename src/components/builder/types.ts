@@ -39,6 +39,24 @@ export interface FormField {
    */
   personalIdentifier?: boolean;
   /**
+   * privacy-consent(개인정보 동의서) 전용 — 「개인정보 보호법」이 요구하는 법정 필수
+   * 고지사항(수집 목적/항목/보유기간, 필요 시 제3자 제공)을 구조화해서 담는다.
+   * 응답 화면에 보여줄 문구는 이 값으로부터 자동 생성한다(src/lib/privacyConsentText.ts)
+   * — 제작자가 매번 법정 문구를 손으로 옮겨 적다가 항목을 빠뜨리는 것을 막기 위함이다.
+   */
+  consentMeta?: {
+    purpose: string;
+    items: string;
+    retentionPeriod: string;
+    refusalConsequence?: string;
+    thirdParty?: {
+      recipient: string;
+      purpose: string;
+      items: string;
+      retentionPeriod: string;
+    };
+  };
+  /**
    * 반복 수집(회차) 시 이전 회차 값을 어떻게 다룰지(3단계).
    *   carry-over         : 지난 값 그대로 (부서·직급처럼 잘 안 바뀌는 것)
    *   carry-with-confirm : 채우되 확인 체크 필수 (자격증 만료일처럼 무심코 넘기면 안 되는 것)
