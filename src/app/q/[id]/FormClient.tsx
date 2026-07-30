@@ -1,13 +1,13 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Lock, UserCheck, History, AlertTriangle } from 'lucide-react';
+import { Lock, UserCheck, History, AlertTriangle, ShieldCheck } from 'lucide-react';
 import type { FormListItem } from '@/lib/apiTypes';
 import { buildConsentText } from '@/lib/privacyConsentText';
 
 interface PrefillEntry {
   value: unknown;
-  policy: 'carry-over' | 'carry-with-confirm';
+  policy: 'carry-over' | 'carry-with-confirm' | 'ldap-locked';
   needsConfirm: boolean;
 }
 
@@ -68,6 +68,7 @@ export default function PublicFormViewer({ formId, identified, respondentName }:
     Array.isArray(prefill.values[fieldId]?.value)
       ? (prefill.values[fieldId].value as unknown[]).map(String)
       : [];
+  const isLdapLocked = (fieldId: string): boolean => prefill.values[fieldId]?.policy === 'ldap-locked';
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -150,8 +151,10 @@ export default function PublicFormViewer({ formId, identified, respondentName }:
             </div>
           )}
 
-          {/* 사전 채움 안내 — 값의 출처를 밝혀야 응답자가 신뢰하고 확인한다 */}
-          {Object.keys(prefill.values).length > 0 && (
+          {/* 사전 채움 안내 — 값의 출처를 밝혀야 응답자가 신뢰하고 확인한다.
+              LDAP 전용 채움만 있는 경우는 여기서 제외한다 — "지난 회차 응답"이 아니라
+              인사시스템 값이므로, 각 필드 옆 배지가 이미 정확한 출처를 알려준다. */}
+          {Object.values(prefill.values).some((v) => v.policy !== 'ldap-locked') && (
             <div className="mt-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-sm text-indigo-900 flex items-start">
               <History className="w-4 h-4 mr-2 mt-0.5 shrink-0 text-indigo-600" />
               <span>
@@ -189,11 +192,17 @@ export default function PublicFormViewer({ formId, identified, respondentName }:
 
               {prefill.values[field.id] && (
                 <div className={`text-xs rounded px-2 py-1.5 border ${
-                  prefill.values[field.id].needsConfirm
-                    ? 'bg-amber-50 border-amber-200 text-amber-800'
-                    : 'bg-slate-50 border-slate-200 text-slate-500'
+                  prefill.values[field.id].policy === 'ldap-locked'
+                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                    : prefill.values[field.id].needsConfirm
+                      ? 'bg-amber-50 border-amber-200 text-amber-800'
+                      : 'bg-slate-50 border-slate-200 text-slate-500'
                 }`}>
-                  {prefill.values[field.id].needsConfirm ? (
+                  {prefill.values[field.id].policy === 'ldap-locked' ? (
+                    <span className="flex items-center gap-1">
+                      <ShieldCheck className="w-3.5 h-3.5" /> 인사시스템에서 자동으로 채워진 값입니다 (읽기 전용)
+                    </span>
+                  ) : prefill.values[field.id].needsConfirm ? (
                     <label className="flex items-start gap-2 cursor-pointer">
                       <input
                         type="checkbox"
@@ -214,7 +223,13 @@ export default function PublicFormViewer({ formId, identified, respondentName }:
                 </div>
               )}
 
-              {field.type === 'textarea' ? (
+              {isLdapLocked(field.id) ? (
+                <div className="flex items-center justify-between w-full p-3 border border-indigo-200 bg-indigo-50/50 rounded-lg text-gray-700">
+                  <span>{prefillValue(field.id)}</span>
+                  <Lock className="w-4 h-4 text-indigo-400 shrink-0" />
+                  <input type="hidden" name={field.id} value={prefillValue(field.id) ?? ''} />
+                </div>
+              ) : field.type === 'textarea' ? (
                 <textarea
                   key={`${field.id}-${prefillValue(field.id) ?? ''}`}
                   name={field.id}

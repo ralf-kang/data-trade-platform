@@ -953,6 +953,33 @@ function FieldDetailPanel({
         <PrivacyConsentSettings field={field} onChange={onChange} />
       )}
 
+      {field.type === 'text' && (
+        <div className="space-y-2 p-3 border border-indigo-100 bg-indigo-50 rounded">
+          <label className="text-sm font-medium text-gray-700 flex items-center space-x-2">
+            <KeyRound className="w-4 h-4 text-indigo-600" />
+            <span>LDAP/인사시스템 자동 채움</span>
+          </label>
+          <select
+            className="w-full p-2 border border-gray-300 rounded text-sm"
+            value={field.ldapAttribute ?? ''}
+            onChange={(e) => onChange({ ldapAttribute: (e.target.value || undefined) as FormField['ldapAttribute'] })}
+          >
+            <option value="">사용 안 함 (직접 입력)</option>
+            <option value="name">이름</option>
+            <option value="employeeNo">사번</option>
+            <option value="department">부서</option>
+            <option value="position">직급</option>
+            <option value="email">이메일</option>
+          </select>
+          {field.ldapAttribute && (
+            <p className="text-[11px] text-indigo-700 leading-relaxed">
+              응답자가 LDAP 계정으로 신원이 확인되면 이 항목은 인사시스템 값으로 자동 채워지고 읽기
+              전용으로 바뀝니다. 로컬 계정이거나 신원이 확인되지 않으면 평소처럼 직접 입력합니다.
+            </p>
+          )}
+        </div>
+      )}
+
       {/* 반복 수집 시 이전 회차 값 처리(3단계). 익명 문항은 지난 값을 찾을 수 없어 제외된다. */}
       {!field.anonymous && (
         <div>

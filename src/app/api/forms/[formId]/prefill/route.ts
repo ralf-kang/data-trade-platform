@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getActiveCampaign } from '@/lib/services/campaignService';
-import { computePrefill } from '@/lib/services/prefillService';
+import { computePrefill, computeLdapAutoFill } from '@/lib/services/prefillService';
 import { getFormTemplate } from '@/lib/elasticsearch';
 import { resolveRespondent } from '@/lib/respondent';
 
@@ -19,14 +19,20 @@ export async function GET(_request: NextRequest, { params }: Params) {
     return NextResponse.json({ values: {}, sourceCampaignName: null, schemaChanged: false });
   }
 
+  const template = await getFormTemplate(formId);
+  const fields = template?.fields ?? [];
+
+  // LDAP 자동 채움은 회차(campaign) 이력과 무관하게 항상 계산할 수 있다 — 먼저 구하고,
+  // 이력 기반 사전 채움과 병합할 때 같은 필드는 LDAP 값이 우선한다(신뢰도가 더 높다).
+  const ldapValues = computeLdapAutoFill(identity.user, fields);
+
   const campaign = identity.campaignId
     ? { id: identity.campaignId }
     : await getActiveCampaign(formId);
   if (!campaign) {
-    return NextResponse.json({ values: {}, sourceCampaignName: null, schemaChanged: false });
+    return NextResponse.json({ values: ldapValues, sourceCampaignName: null, schemaChanged: false });
   }
 
-  const template = await getFormTemplate(formId);
-  const result = await computePrefill(formId, identity.user.id, campaign.id, template?.fields ?? []);
-  return NextResponse.json(result);
+  const historyResult = await computePrefill(formId, identity.user.id, campaign.id, fields);
+  return NextResponse.json({ ...historyResult, values: { ...historyResult.values, ...ldapValues } });
 }

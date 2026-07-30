@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { getSubmission } from '@/lib/elasticsearch';
 import type { FormField } from '@/components/builder/types';
+import type { User } from '@/generated/prisma/client';
 
 /**
  * 사전 채움(3단계) — 반복 수집에서 응답자가 겪는 "지난번과 똑같은 걸 또 적는" 고통을 없앤다.
@@ -12,7 +13,7 @@ import type { FormField } from '@/components/builder/types';
 
 export interface PrefillEntry {
   value: unknown;
-  policy: 'carry-over' | 'carry-with-confirm';
+  policy: 'carry-over' | 'carry-with-confirm' | 'ldap-locked';
   /** 사용자가 확인 체크를 해야 제출할 수 있는 항목인지 */
   needsConfirm: boolean;
 }
@@ -27,6 +28,28 @@ export interface PrefillResult {
 }
 
 const EMPTY: PrefillResult = { values: {}, sourceCampaignName: null, schemaChanged: false };
+
+/**
+ * LDAP 자동 채움(1단계, docs/데이터품질-검증구간-설계.md §3-1 신뢰도 ★★★★★) — 응답자가
+ * LDAP 계정으로 확인된 경우에만 채운다. 로컬 계정은 인사시스템이 검증한 값이 아니므로
+ * (LDAP 동기화를 거치지 않은 임의 입력일 수 있어) 자동 채움 대상에서 제외하고 직접
+ * 입력하게 둔다 — "신뢰할 수 없는 값을 자동으로, 확인 없이 채우는 것"이 가장 위험하다.
+ *
+ * 회차(campaign)와 무관하게 항상 계산할 수 있다 — 과거 제출 이력이 아니라 현재 계정
+ * 정보를 그대로 반영하기 때문이다.
+ */
+export function computeLdapAutoFill(user: User, fields: FormField[]): Record<string, PrefillEntry> {
+  const values: Record<string, PrefillEntry> = {};
+  if (user.source !== 'LDAP') return values;
+
+  for (const field of fields) {
+    if (!field.ldapAttribute) continue;
+    const raw = user[field.ldapAttribute];
+    if (raw === null || raw === undefined || raw === '') continue;
+    values[field.id] = { value: raw, policy: 'ldap-locked', needsConfirm: false };
+  }
+  return values;
+}
 
 /**
  * 이 응답자의 직전 회차 응답에서 사전 채움 값을 계산한다.
@@ -64,6 +87,10 @@ export async function computePrefill(
   const values: Record<string, PrefillEntry> = {};
 
   for (const field of fields) {
+    // LDAP 자동 채움 대상 필드는 인사시스템이 항상 최신값의 근거이므로, 지난 회차의
+    // (그 사이 바뀌었을 수 있는) 이력값으로 덮어쓰지 않는다 — computeLdapAutoFill이 담당한다.
+    if (field.ldapAttribute) continue;
+
     const policy = field.prefillPolicy ?? 'clear';
     if (policy === 'clear') continue;
 

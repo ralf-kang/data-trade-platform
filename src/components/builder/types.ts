@@ -39,6 +39,13 @@ export interface FormField {
    */
   personalIdentifier?: boolean;
   /**
+   * LDAP/인사시스템 자동 채움(데이터 정확성 1단계, docs/데이터품질-검증구간-설계.md §5 순위1).
+   * 값을 지정하면 응답자 신원이 LDAP 계정으로 확인된 경우 해당 속성값이 읽기 전용으로
+   * 자동 채워진다 — 입력을 아예 없애는 것이 오탈자·불일치를 막는 가장 확실한 방법이기
+   * 때문이다(사람이 직접 타이핑하지 않으면 오타 자체가 날 수 없다).
+   */
+  ldapAttribute?: 'employeeNo' | 'department' | 'position' | 'name' | 'email';
+  /**
    * privacy-consent(개인정보 동의서) 전용 — 「개인정보 보호법」이 요구하는 법정 필수
    * 고지사항(수집 목적/항목/보유기간, 필요 시 제3자 제공)을 구조화해서 담는다.
    * 응답 화면에 보여줄 문구는 이 값으로부터 자동 생성한다(src/lib/privacyConsentText.ts)
