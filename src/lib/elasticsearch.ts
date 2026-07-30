@@ -564,6 +564,66 @@ export async function countQuasiIdentifierCombinations(
   return (agg?.buckets ?? []).map((b) => ({ key: b.key, count: b.doc_count }));
 }
 
+/**
+ * 양식지 관계(온톨로지) 캔버스의 "연결 테스트"가 쓰는 원자료 — 한 문항의 값별 등장
+ * 문서 수. 정규화(공백 제거·대소문자 등)는 이 함수가 아니라 호출부(formLinkService)에서
+ * 적용한다 — 값 자체는 원본 그대로 가져와야 정규화 규칙을 토글할 때마다 재계산할 수 있다.
+ */
+export async function getFieldValueCounts(
+  formId: string,
+  fieldId: string,
+  rawType: boolean
+): Promise<Array<{ value: string; docCount: number }>> {
+  await ensureIndices();
+  const res = await elasticClient.search({
+    index: INDEX_NAMES.SUBMISSIONS,
+    size: 0,
+    query: { bool: { filter: [{ term: { formId } }] } },
+    aggs: {
+      values: {
+        terms: { field: rawType ? `data.${fieldId}` : `data.${fieldId}.keyword`, size: 5000 },
+      },
+    },
+  });
+
+  type Bucket = { key: string | number; doc_count: number };
+  const agg = res.aggregations?.values as { buckets: Bucket[] } | undefined;
+  return (agg?.buckets ?? []).map((b) => ({ value: String(b.key), docCount: b.doc_count }));
+}
+
+/** 전체 응답 수 — 연결 테스트의 k-게이트("응답이 너무 적어 계산할 수 없음") 판정용. */
+export async function countFormSubmissions(formId: string): Promise<number> {
+  await ensureIndices();
+  const res = await elasticClient.count({ index: INDEX_NAMES.SUBMISSIONS, query: { term: { formId } } });
+  return res.count;
+}
+
+/** 관계 캔버스 미리보기(최근 5건) — 특정 문항 값을 가진 제출 1건을 찾는다. */
+export async function findSubmissionByFieldValue(
+  formId: string,
+  fieldId: string,
+  rawType: boolean,
+  value: string
+): Promise<{ submissionId: string; submittedAt: string } | null> {
+  await ensureIndices();
+  const res = await elasticClient.search<SubmissionDocument>({
+    index: INDEX_NAMES.SUBMISSIONS,
+    size: 1,
+    sort: [{ submittedAt: 'desc' }],
+    query: {
+      bool: {
+        filter: [
+          { term: { formId } },
+          { term: { [rawType ? `data.${fieldId}` : `data.${fieldId}.keyword`]: value } },
+        ],
+      },
+    },
+  });
+  const hit = res.hits.hits[0];
+  if (!hit?._source) return null;
+  return { submissionId: hit._source.submissionId, submittedAt: hit._source.submittedAt };
+}
+
 // ---------------------------------------------------------------------------
 // 워드클라우드 — 한국어 형태소 분석(Nori) 집계
 // ---------------------------------------------------------------------------

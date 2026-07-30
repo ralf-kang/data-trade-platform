@@ -15,7 +15,8 @@ import {
   Database,
   UserCog,
   Network,
-  Cloud
+  Cloud,
+  Link2
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { AccountMenu } from './AccountMenu';
@@ -41,6 +42,7 @@ export function AdminSidebar({ role = 'admin' }: AdminSidebarProps) {
     { name: '조직 및 관리자 제어', href: '/super-admin/users', icon: ShieldAlert },
     { name: '개인정보취급자 명부', href: '/super-admin/author-authorizations', icon: UserCog },
     { name: '데이터 구조 관계도', href: '/super-admin/data-map', icon: Network },
+    { name: '양식지 관계 캔버스', href: '/super-admin/form-links', icon: Link2 },
     { name: '전체 행동 감사 (Audit)', href: '/admin/audit', icon: Activity },
     { name: '시스템 환경 설정', href: '/super-admin/settings', icon: Settings },
   ];

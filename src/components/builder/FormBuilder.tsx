@@ -8,7 +8,7 @@ import {
   CheckSquare, Calendar, Upload, PenTool,
   Image as ImageIcon, Images, Video, Table, FileBox, MessageSquare, Link as LinkIcon,
   Layers, BellOff, ShieldAlert, Database, FileSpreadsheet, Save, ArrowUp, ArrowDown, Trash2,
-  Smartphone, Monitor, Globe, Regex, MapPin, Star, GripHorizontal, Sparkles, Plus, X, SlidersHorizontal, Lock
+  Smartphone, Monitor, Globe, Regex, MapPin, Star, GripHorizontal, Sparkles, Plus, X, SlidersHorizontal, Lock, KeyRound
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AiAutoGenerator from './AiAutoGenerator';
@@ -851,6 +851,29 @@ function FieldDetailPanel({
         <label className="flex items-center space-x-2 text-sm text-gray-700">
           <input type="checkbox" checked={!!field.privacyMasking} onChange={(e) => onChange({ privacyMasking: e.target.checked })} />
           <span>비식별화(마스킹) 처리 — 데이터 뷰어에서 이 항목을 마스킹해 표시</span>
+        </label>
+      </div>
+
+      {/* 양식지 관계(온톨로지) 캔버스에서 쓰는 태그 — 시스템이 값 포맷으로 추론하지 않고
+          제작자가 직접 표시한 것만 개인식별자로 취급한다 (§5-3). */}
+      <div className="p-3 bg-gray-50 border border-gray-200 rounded">
+        <label className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={!!field.personalIdentifier}
+            onChange={(e) => onChange({ personalIdentifier: e.target.checked })}
+          />
+          <span>
+            <span className="font-bold flex items-center gap-1">
+              <KeyRound className="w-3.5 h-3.5" /> 개인식별자로 표시
+            </span>
+            <span className="block text-xs mt-1 text-gray-500">
+              사번·전화번호·이메일 등 이 문항이 개인을 특정하는 값이면 켜세요. 양식지 관계
+              (온톨로지) 화면에서 이 문항으로 다른 양식지와 연결하려면 슈퍼관리자에게 개인정보
+              취급 확인이 필요하고, 미리보기에서는 값이 항상 블러 처리됩니다.
+            </span>
+          </span>
         </label>
       </div>
     </div>

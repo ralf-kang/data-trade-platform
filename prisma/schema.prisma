@@ -184,6 +184,11 @@ model User {
   // false이면 /submissions/export 요청이 거부된다 (src/lib/services/submissionService.ts).
   canBulkExport Boolean @default(true)
 
+  // 양식지 관계(온톨로지) 캔버스 최초 진입 시 재식별 위험 안내에 동의한 시각.
+  // privacyWarningAck와 같은 패턴 — 최초 1회만 모달을 띄우고, 이후엔 설정에서 재열람만 가능.
+  // (docs/양식지-관계-온톨로지-설계.md §2-5)
+  ontologyConsentAt DateTime?
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   lastLoginAt DateTime?
@@ -350,6 +355,56 @@ model FormApprovalRequest {
   reviewNote String?
 
   @@map("form_approval_requests")
+}
+
+// 양식지 간 관계(온톨로지) — 사용자가 두 양식지의 문항이 같은 키값을 담고 있는지
+// 테스트하고 선언한 결과. 실제 매칭 레코드는 여기 저장하지 않는다(질의 시 계산) —
+// 저장하면 마스킹을 우회하는 비마스킹 사본이 되기 때문이다.
+// (docs/양식지-관계-온톨로지-설계.md §3 — 슈퍼관리자 전용 기능, §5-2)
+enum FormLinkCardinality {
+  ONE_TO_ONE
+  ONE_TO_MANY
+  MANY_TO_ONE
+  MANY_TO_MANY
+}
+
+enum FormLinkVisibility {
+  PRIVATE
+  PENDING
+  SHARED
+}
+
+model FormLink {
+  id           String @id @default(cuid())
+  leftFormId   String
+  leftFieldId  String
+  rightFormId  String
+  rightFieldId String
+
+  name        String // "이 직원이 제출한 만족도조사"
+  reverseName String // "이 응답을 제출한 직원"
+
+  cardinality FormLinkCardinality
+
+  /// 정규화 규칙 (trim/stripSeparator/lowercase/stripLeadingZero/nfc ...)
+  normalization Json
+
+  /// leftField/rightField 중 하나라도 FormField.personalIdentifier=true면 true.
+  /// 시스템이 값으로 추론하지 않는다 — 제작자 태그를 그대로 반영한 값. 블러 처리 판정 기준.
+  isPersonalKey Boolean @default(false)
+
+  /// 현재는 슈퍼관리자만 이 기능을 쓰므로(§5-2) 사실상 항상 PRIVATE다.
+  visibility FormLinkVisibility @default(PRIVATE)
+  approvedBy String?
+  approvedAt DateTime?
+
+  createdBy   String
+  createdAt   DateTime @default(now())
+  description String?
+
+  @@index([leftFormId])
+  @@index([rightFormId])
+  @@map("form_links")
 }
 
 // 회차 자동 생성 규칙. 이것이 있으면 다음 회차를 미리 만들어 두고 대상자에게
