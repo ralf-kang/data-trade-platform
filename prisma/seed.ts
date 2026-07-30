@@ -13,6 +13,7 @@
 import { PrismaClient } from '../src/generated/prisma/client.ts';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Client as ElasticClient } from '@elastic/elasticsearch';
+import { SAMPLE_FORMS } from './sampleData.ts';
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -268,7 +269,8 @@ async function main() {
   }
 
   console.log('[seed] 폼 레지스트리(정형) + 폼 템플릿/제출데이터(비정형) 생성...');
-  for (const form of FORMS) {
+  console.log(`[seed]   기본 데모 ${FORMS.length}건 + 샘플 양식지 ${SAMPLE_FORMS.length}건`);
+  for (const form of [...FORMS, ...SAMPLE_FORMS]) {
     const owner = userByEmail.get(form.ownerEmail);
     // 데모 양식지는 확정(PUBLISHED) 상태로 넣어 외부 연동 API를 바로 시험해 볼 수 있게 한다.
     // (신규로 만드는 양식지는 DRAFT에서 시작해, 설계가 끝난 뒤 사용자가 직접 확정한다.)
