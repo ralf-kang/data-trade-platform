@@ -234,7 +234,7 @@ export default function AdminTemplatesPage() {
         </aside>
 
         <div className="flex-1 min-w-0">
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
@@ -262,20 +262,20 @@ export default function AdminTemplatesPage() {
                     <div className="font-medium text-gray-900">{template.title}</div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="flex flex-wrap gap-1 max-w-[220px]">
+                    <div className="flex flex-wrap gap-1 min-w-[150px] max-w-[240px]">
                       {(taxonomyByForm[template.id]?.categoryIds ?? []).map((id) => (
-                        <span key={id} className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        <span key={id} className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 whitespace-nowrap">
                           {categoryNameById.get(id) ?? '—'}
                         </span>
                       ))}
                       {(taxonomyByForm[template.id]?.folderIds ?? []).map((id) => (
-                        <span key={id} className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                        <span key={id} className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 whitespace-nowrap">
                           {folderNameById.get(id) ?? '—'}
                         </span>
                       ))}
                       {!taxonomyByForm[template.id]?.categoryIds.length &&
                         !taxonomyByForm[template.id]?.folderIds.length && (
-                          <span className="text-[11px] text-slate-300">미분류</span>
+                          <span className="text-[11px] text-slate-300 whitespace-nowrap">미분류</span>
                         )}
                     </div>
                   </td>
