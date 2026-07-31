@@ -20,7 +20,7 @@ import type { FormField } from '@/components/builder/types';
  * 그대로 우회되므로, 마스킹은 반드시 서비스 계층(데이터가 나가는 지점)에서 적용한다.
  */
 
-const MASKED_FIELD_TYPES = new Set(['text', 'textarea', 'regex-input']);
+export const MASKED_FIELD_TYPES = new Set(['text', 'textarea', 'regex-input']);
 const FIELD_REDACTED = '••••• (마스킹됨)';
 const RECORD_REDACTED = '(비공개 — 다른 응답값과의 조합으로 개인이 식별될 수 있음)';
 
@@ -170,3 +170,6 @@ export async function maskSubmissionOne(
   const [masked] = await maskSubmissionList(formId, fields, [item]);
   return masked;
 }
+
+/** 마스킹 표기 상수 — 화면이 "이 셀은 가려졌다"를 판정할 때 쓴다. */
+export const MASK_MARKERS = { field: FIELD_REDACTED, record: RECORD_REDACTED };

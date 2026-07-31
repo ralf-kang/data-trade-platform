@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Table, ArrowLeft, Download, Filter, Search, Edit2, Save, X, AlertTriangle, Cloud, ShieldQuestion } from 'lucide-react';
+import { Table, ArrowLeft, Download, Filter, Search, Edit2, Save, X, AlertTriangle, Cloud, ShieldQuestion, Eye, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import type { FormListItem, SubmissionItem } from '@/lib/apiTypes';
@@ -18,6 +18,35 @@ export default function DataViewerPage() {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Record<string, unknown>>({});
+
+  // 마스킹 열람 — 셀 단위로만 연다. 목록 응답에는 원문이 들어 있지 않으므로,
+  // 열람할 때마다 서버에 따로 요청해서 받아온다(그 요청이 감사 로그로 남는다).
+  const [revealed, setRevealed] = useState<Record<string, string>>({});
+  const [revealing, setRevealing] = useState<string | null>(null);
+  const [revealError, setRevealError] = useState<string | null>(null);
+
+  const cellKey = (submissionId: string, fieldId: string) => `${submissionId}:${fieldId}`;
+
+  const handleReveal = async (submissionId: string, fieldId: string) => {
+    const key = cellKey(submissionId, fieldId);
+    setRevealing(key);
+    setRevealError(null);
+    try {
+      const res = await fetch(`/api/forms/${formId}/submissions/${submissionId}/reveal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fieldId }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setRevealError(json.message ?? '값을 열람할 수 없습니다.');
+        return;
+      }
+      setRevealed((prev) => ({ ...prev, [key]: json.value }));
+    } finally {
+      setRevealing(null);
+    }
+  };
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
 
@@ -242,7 +271,37 @@ export default function DataViewerPage() {
                                   <AlertTriangle className="w-4 h-4 text-amber-500" />
                                 </span>
                               )}
-                              {value}
+                              {(() => {
+                                const key = cellKey(row.submissionId, col.key);
+                                if (revealed[key] !== undefined) {
+                                  return (
+                                    <span className="text-slate-900">
+                                      {revealed[key] === '' ? <span className="text-slate-300">(비어 있음)</span> : revealed[key]}
+                                      <span className="ml-1.5 text-[10px] text-amber-600 align-middle">열람됨</span>
+                                    </span>
+                                  );
+                                }
+                                // 마스킹된 셀만 클릭 대상으로 만든다. 개인정보 취급자가 아니면
+                                // 서버가 거부하고, 그 시도도 감사 로그에 남는다.
+                                if (value.includes('마스킹됨')) {
+                                  return (
+                                    <button
+                                      onClick={() => handleReveal(row.submissionId, col.key)}
+                                      disabled={revealing === key}
+                                      className="inline-flex items-center gap-1 text-slate-400 hover:text-indigo-600 disabled:opacity-50"
+                                      title="개인정보 취급자만 열람할 수 있습니다. 열람 이력이 감사 로그에 기록됩니다."
+                                    >
+                                      {revealing === key ? (
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                      ) : (
+                                        <Eye className="w-3.5 h-3.5" />
+                                      )}
+                                      {value}
+                                    </button>
+                                  );
+                                }
+                                return value;
+                              })()}
                             </div>
                           )}
                         </td>
@@ -254,6 +313,15 @@ export default function DataViewerPage() {
               </tbody>
             </table>
           </div>
+
+          {revealError && (
+            <div className="mx-6 mb-3 bg-rose-50 border border-rose-200 rounded-lg px-4 py-2.5 text-sm text-rose-700 flex items-center justify-between gap-2">
+              <span>{revealError}</span>
+              <button onClick={() => setRevealError(null)} className="text-rose-400 hover:text-rose-600 shrink-0">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
 
           <div className="bg-slate-50 px-6 py-4 border-t border-gray-200 flex items-center justify-between">
             <p className="text-sm text-gray-500">
