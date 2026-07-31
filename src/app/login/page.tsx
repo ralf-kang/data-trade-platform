@@ -16,8 +16,9 @@ export default function LoginPage() {
   const [showMfa, setShowMfa] = useState(false);
   const [mfaCode, setMfaCode] = useState('');
   
-  // Default credentials config
-  const DEFAULT_ID = 'ralfkang@ktl.re.kr';
+  // 개발용 목업 자격증명. 브라우저에서 비교하므로 어차피 번들에 그대로 노출되며,
+  // 실제 인증이 아니다(README "알려진 한계" 참고). 운영 전환 시 서버 검증으로 교체할 것.
+  const DEFAULT_ID = 'admin@example.com';
   const DEFAULT_PW = 'test1234';
   const DEFAULT_MFA = '111111';
 
@@ -25,7 +26,7 @@ export default function LoginPage() {
     e.preventDefault();
     if (role === 'super') {
       if (email !== DEFAULT_ID || password !== DEFAULT_PW) {
-        alert('이메일 또는 비밀번호가 일치하지 않습니다.\n(기본 계정: ralfkang@ktl.re.kr / test1234)');
+        alert('이메일 또는 비밀번호가 일치하지 않습니다.');
         return;
       }
       setShowMfa(true);
@@ -41,7 +42,7 @@ export default function LoginPage() {
   const handleMfaSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (mfaCode !== DEFAULT_MFA) {
-      alert('MFA 코드가 일치하지 않습니다.\n(기본 MFA: 111111)');
+      alert('MFA 코드가 일치하지 않습니다.');
       return;
     }
     document.cookie = "adminRole=super-admin; path=/";

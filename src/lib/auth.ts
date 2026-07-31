@@ -45,7 +45,7 @@ export async function getCurrentUser(): Promise<ActingUser> {
   const email = rawEmail
     ? decodeURIComponent(rawEmail)
     : cookieRole === 'super-admin'
-      ? 'ralfkang@ktl.re.kr'
+      ? 'admin@example.com'
       : 'admin@company.com';
 
   const existing = await prisma.user.findUnique({ where: { email }, include: { roles: true } });

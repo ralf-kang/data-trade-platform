@@ -146,7 +146,7 @@ export interface SampleForm {
   authorHadPrivacyAuth?: boolean;
 }
 
-const OWNER = 'ralfkang@ktl.re.kr';
+const OWNER = 'admin@example.com';
 
 export const SAMPLE_FORMS: SampleForm[] = [
   // -------------------------------------------------------------------------
