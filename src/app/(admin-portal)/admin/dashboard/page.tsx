@@ -4,27 +4,44 @@ import { useEffect, useState } from 'react';
 import { Users, FileText, ArrowUpRight, TrendingUp, Copy, FileSpreadsheet } from 'lucide-react';
 import Link from 'next/link';
 import type { FormListItem } from '@/lib/apiTypes';
+import {
+  SubmissionTrendWidget,
+  ActionItemsWidget,
+  PrivacyWidget,
+  TaxonomyWidget,
+  CounterDriftNotice,
+  type DashboardStats,
+} from '@/components/dashboard/DashboardWidgets';
 
 export default function AdminDashboardPage() {
   const [forms, setForms] = useState<FormListItem[]>([]);
   const [pendingShareCount, setPendingShareCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  // 대시보드 숫자는 저장된 카운터가 아니라 실제 집계를 쓴다(dashboardStatsService 주석 참고).
+  const [stats, setStats] = useState<DashboardStats | null>(null);
 
   useEffect(() => {
     Promise.all([
       fetch('/api/forms').then((res) => res.json()),
       fetch('/api/share-requests').then((res) => (res.ok ? res.json() : { received: [] })),
+      fetch('/api/admin/dashboard-stats').then((res) => (res.ok ? res.json() : null)),
     ])
-      .then(([formsJson, shareJson]) => {
+      .then(([formsJson, shareJson, statsJson]) => {
         setForms(formsJson.forms ?? []);
         const received: { status: string }[] = shareJson.received ?? [];
         setPendingShareCount(received.filter((r) => r.status === 'PENDING').length);
+        setStats(statsJson ?? null);
       })
       .finally(() => setLoading(false));
   }, []);
 
-  const popularForms = [...forms].sort((a, b) => b.submissionCount - a.submissionCount).slice(0, 5);
-  const totalSubmissions = forms.reduce((sum, f) => sum + f.submissionCount, 0);
+  // 인기 랭킹도 실제 집계 순서를 쓴다 — 저장된 카운터로 정렬하면 순위 자체가 틀어진다.
+  const countByForm = new Map((stats?.topForms ?? []).map((t) => [t.formId, t.count]));
+  const popularForms = [...forms]
+    .map((f) => ({ ...f, actualCount: countByForm.get(f.id) ?? f.submissionCount }))
+    .sort((a, b) => b.actualCount - a.actualCount)
+    .slice(0, 5);
+  const totalSubmissions = stats?.submissionTotal ?? 0;
 
   const handleRequestShare = async (form: FormListItem) => {
     const res = await fetch('/api/share-requests', {
@@ -64,7 +81,7 @@ export default function AdminDashboardPage() {
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-500 mb-1">운영 중인 양식</p>
-                <h3 className="text-2xl font-bold text-gray-900">{loading ? '-' : `${forms.length}개`}</h3>
+                <h3 className="text-2xl font-bold text-gray-900">{loading ? '-' : `${stats?.formCount ?? forms.length}개`}</h3>
               </div>
             </div>
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center">
@@ -86,6 +103,21 @@ export default function AdminDashboardPage() {
               </div>
             </div>
           </div>
+
+          {stats && (
+            <>
+              <div className="mb-4">
+                <CounterDriftNotice stats={stats} />
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                <SubmissionTrendWidget daily={stats.daily} />
+                <ActionItemsWidget items={stats.actionItems} />
+                <PrivacyWidget privacy={stats.privacy} />
+                <TaxonomyWidget taxonomy={stats.taxonomy} />
+              </div>
+            </>
+          )}
 
           {/* Popular Forms Widget (Cross-tenant Ecosystem) */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -117,7 +149,7 @@ export default function AdminDashboardPage() {
 
                   <div className="flex items-center space-x-6">
                     <div className="text-right">
-                      <div className="text-sm font-medium text-gray-900">{form.submissionCount.toLocaleString()}건 제출</div>
+                      <div className="text-sm font-medium text-gray-900">{form.actualCount.toLocaleString()}건 제출</div>
                       <div className="text-xs font-medium mt-1 text-gray-400">조회 {form.viewCount.toLocaleString()}회</div>
                     </div>
                     <button

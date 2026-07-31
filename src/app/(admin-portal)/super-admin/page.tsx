@@ -1,8 +1,23 @@
+import { getDashboardStats } from '@/lib/services/dashboardStatsService';
+import { prisma } from '@/lib/db';
+
 export const metadata = {
   title: '최고관리자 대시보드 - Web Report Editor',
 };
 
-export default function SuperAdminPage() {
+export default async function SuperAdminPage() {
+  // 하드코딩된 표본 숫자 대신 실제 집계를 쓴다 — 대시보드에 가짜 숫자가 섞이면
+  // 나머지 진짜 숫자까지 신뢰할 수 없게 된다.
+  const [stats, activeAdmins] = await Promise.all([
+    getDashboardStats(null),
+    prisma.user.count({ where: { status: 'ACTIVE' } }),
+  ]);
+  const pendingTotal =
+    stats.actionItems.pendingShareRequests +
+    stats.actionItems.pendingCorrections +
+    stats.actionItems.pendingApprovals +
+    stats.actionItems.pendingAuthorAuths;
+
   return (
     <div className="p-8">
       <div className="max-w-6xl mx-auto">
@@ -15,20 +30,20 @@ export default function SuperAdminPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-700">전체 테넌트</h3>
-            <p className="text-4xl font-bold text-indigo-600 mt-2">12</p>
+            <h3 className="text-lg font-semibold text-gray-700">전체 양식지</h3>
+            <p className="text-4xl font-bold text-indigo-600 mt-2">{stats.formCount}</p>
           </div>
           <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-700">활성 관리자 (Admin)</h3>
-            <p className="text-4xl font-bold text-blue-600 mt-2">45</p>
+            <h3 className="text-lg font-semibold text-gray-700">활성 계정</h3>
+            <p className="text-4xl font-bold text-blue-600 mt-2">{activeAdmins}</p>
           </div>
           <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
             <h3 className="text-lg font-semibold text-gray-700">누적 폼 제출 건수</h3>
-            <p className="text-4xl font-bold text-green-600 mt-2">1,284</p>
+            <p className="text-4xl font-bold text-green-600 mt-2">{stats.submissionTotal.toLocaleString()}</p>
           </div>
           <div className="bg-white p-6 rounded-lg shadow-sm border border-amber-200 bg-amber-50">
-            <h3 className="text-lg font-semibold text-amber-900">데이터 패키징(추출) 대기</h3>
-            <p className="text-4xl font-bold text-amber-600 mt-2">3건</p>
+            <h3 className="text-lg font-semibold text-amber-900">조치 필요</h3>
+            <p className="text-4xl font-bold text-amber-600 mt-2">{pendingTotal}건</p>
           </div>
         </div>
 
@@ -36,10 +51,14 @@ export default function SuperAdminPage() {
         <div className="bg-white shadow-sm rounded-lg border border-gray-200 overflow-hidden mb-8">
           <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
             <h2 className="text-xl font-bold text-gray-800">데이터 거래 및 B2B 통계 (CRM)</h2>
-            <span className="text-sm font-medium text-indigo-600 bg-indigo-100 px-3 py-1 rounded-full">Super Admin Only</span>
+            <span className="text-sm font-medium text-amber-700 bg-amber-100 px-3 py-1 rounded-full">미구현 — 화면 예시</span>
           </div>
           <div className="p-6">
-            <p className="text-gray-600 mb-6">각 테넌트(기관)에서 수집된 방대한 데이터를 취합하여 패키징하고, 타 기관에 제공/판매(API 또는 다운로드)하기 위한 관제 대시보드입니다.</p>
+            <p className="text-gray-600 mb-2">각 부서(테넌트)에서 수집된 데이터를 취합·패키징해 타 기관에 제공하기 위한 관제 화면입니다.</p>
+            <div className="mb-6 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
+              <strong>아래는 아직 구현되지 않은 화면 예시입니다.</strong> 표시된 수치와 버튼은 실제 데이터·동작과
+              연결되어 있지 않습니다. 설계는 <code className="font-mono text-xs">docs/테넌트-데이터거래-설계.md</code>에 있습니다.
+            </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Tenant A Box */}

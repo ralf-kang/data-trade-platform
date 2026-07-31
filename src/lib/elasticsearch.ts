@@ -875,6 +875,54 @@ export async function suggestFieldValuesForRespondents(
   return (agg?.buckets ?? []).filter((b) => b.key).map((b) => ({ value: String(b.key), count: b.doc_count }));
 }
 
+
+/**
+ * 대시보드용 실제 집계 — 폼별 제출 문서 수와 최근 일자별 제출 수.
+ *
+ * `FormRegistry.submissionCount`는 비정규화 카운터라 재시드·수동 삭제 등으로 실제와
+ * 어긋날 수 있다. 대시보드처럼 "지금 몇 건인가"를 보여주는 화면은 저장된 카운터가 아니라
+ * 실제 문서 수를 세야 한다(집계 한 번이면 되므로 비용도 크지 않다).
+ */
+export async function aggregateSubmissionStats(days = 14): Promise<{
+  total: number;
+  byForm: Record<string, number>;
+  daily: Array<{ date: string; count: number }>;
+}> {
+  await ensureIndices();
+  const res = await elasticClient.search({
+    index: INDEX_NAMES.SUBMISSIONS,
+    size: 0,
+    aggs: {
+      byForm: { terms: { field: 'formId', size: 500 } },
+      daily: {
+        date_histogram: {
+          field: 'submittedAt',
+          calendar_interval: 'day',
+          min_doc_count: 0,
+          extended_bounds: { min: `now-${days}d/d`, max: 'now/d' },
+        },
+      },
+    },
+    query: { match_all: {} },
+  });
+
+  const total = typeof res.hits.total === 'number' ? res.hits.total : res.hits.total?.value ?? 0;
+  type Bucket = { key: string | number; key_as_string?: string; doc_count: number };
+  const byFormAgg = res.aggregations?.byForm as { buckets: Bucket[] } | undefined;
+  const dailyAgg = res.aggregations?.daily as { buckets: Bucket[] } | undefined;
+
+  const byForm: Record<string, number> = {};
+  for (const b of byFormAgg?.buckets ?? []) byForm[String(b.key)] = b.doc_count;
+
+  // 요청한 기간만 남긴다 — extended_bounds가 과거 데이터 범위까지 채울 수 있다.
+  const daily = (dailyAgg?.buckets ?? [])
+    .map((b) => ({ date: (b.key_as_string ?? '').slice(0, 10), count: b.doc_count }))
+    .filter((d) => d.date)
+    .slice(-days);
+
+  return { total, byForm, daily };
+}
+
 export async function getRecentSubmissions(limit = 10): Promise<SubmissionDocument[]> {
   await ensureIndices();
   const res = await elasticClient.search<SubmissionDocument>({

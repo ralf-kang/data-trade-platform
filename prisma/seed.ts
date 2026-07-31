@@ -320,6 +320,9 @@ async function main() {
         lifecycle: 'PUBLISHED',
         publishedAt: new Date(),
         authorHadPrivacyAuth: form.authorHadPrivacyAuth ?? false,
+        // update 분기에서도 반드시 갱신한다 — 여기를 빼먹으면 재시드 때 ES 문서 수만
+        // 늘어나고 카운터는 첫 실행 값에 머물러, 대시보드 숫자가 조용히 어긋난다.
+        submissionCount: form.submissions.length,
       },
       create: {
         id: form.id,
