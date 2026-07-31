@@ -44,6 +44,12 @@ export default function AdminTemplatesPage() {
   const [assignTarget, setAssignTarget] = useState<FormListItem | null>(null);
   const [taxonomyError, setTaxonomyError] = useState<string | null>(null);
 
+  // 슈퍼관리자는 소유하지 않은 양식지도 분류할 수 있어야 한다 — 소유자 계정이 바뀌거나
+  // 담당자가 퇴사하면 소유자만 고칠 수 있는 구조에서는 아무도 고칠 수 없게 된다.
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [myUserId, setMyUserId] = useState<string | null>(null);
+  const [scope, setScope] = useState<'mine' | 'all'>('mine');
+
   const loadTaxonomy = () =>
     fetch('/api/forms/taxonomy')
       .then((r) => (r.ok ? r.json() : null))
@@ -67,9 +73,9 @@ export default function AdminTemplatesPage() {
   };
 
   // 목록 재조회(복사 후 새로고침 등 이벤트 핸들러 전용) — 로딩 상태를 다시 true로 보여준다.
-  const reloadTemplates = () => {
+  const reloadTemplates = (nextScope: 'mine' | 'all' = scope) => {
     setLoading(true);
-    fetch('/api/forms?mine=1')
+    fetch(nextScope === 'mine' ? '/api/forms?mine=1' : '/api/forms')
       .then((res) => res.json())
       .then((json) => setTemplates(json.forms ?? []))
       .finally(() => setLoading(false));
@@ -82,11 +88,14 @@ export default function AdminTemplatesPage() {
       // "받은 요청(received)" = 내가 소유자로서 승인/대기 처리하는 요청 — 승인된 것은
       // 곧 "내가 다른 관리자에게 부여한 제출 데이터 조회 권한"이다.
       fetch('/api/share-requests').then((res) => (res.ok ? res.json() : { received: [] })),
+      fetch('/api/me').then((res) => (res.ok ? res.json() : null)),
     ])
-      .then(([formsJson, shareJson]) => {
+      .then(([formsJson, shareJson, meJson]) => {
         setTemplates(formsJson.forms ?? []);
         const received: ShareRequestItem[] = shareJson.received ?? [];
         setGrantedShares(received.filter((r) => r.status === 'APPROVED'));
+        setIsSuperAdmin(!!meJson?.isPlatformAdmin);
+        setMyUserId(meJson?.id ?? null);
       })
       .finally(() => setLoading(false));
     loadTaxonomy();
@@ -174,10 +183,32 @@ export default function AdminTemplatesPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-5xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex flex-wrap justify-between items-center gap-4 mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">내 템플릿 관리</h1>
-            <p className="text-gray-500 mt-2">내가 소유한 양식만 표시됩니다. 관리하고 복사하여 새로운 양식을 만들 수 있습니다.</p>
+            <h1 className="text-3xl font-bold text-gray-900">양식 템플릿 관리</h1>
+            <p className="text-gray-500 mt-2">
+              {scope === 'mine'
+                ? '내가 소유한 양식만 표시됩니다. 관리하고 복사하여 새로운 양식을 만들 수 있습니다.'
+                : '전체 양식지를 표시합니다. 소유자가 아니어도 슈퍼관리자는 산업분야를 지정할 수 있습니다.'}
+            </p>
+            {isSuperAdmin && (
+              <div className="mt-3 inline-flex rounded-lg border border-slate-300 overflow-hidden">
+                {(['mine', 'all'] as const).map((sc) => (
+                  <button
+                    key={sc}
+                    onClick={() => {
+                      setScope(sc);
+                      reloadTemplates(sc);
+                    }}
+                    className={`px-3 py-1.5 text-xs font-medium ${
+                      scope === sc ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {sc === 'mine' ? '내 양식' : '전체 양식'}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <HelpLink />
@@ -243,6 +274,9 @@ export default function AdminTemplatesPage() {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">양식 제목</th>
+                {scope === 'all' && (
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">소유자</th>
+                )}
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">분류</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">필드 수</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">생성일</th>
@@ -252,12 +286,23 @@ export default function AdminTemplatesPage() {
             <tbody className="bg-white divide-y divide-gray-200">
               {loading && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-gray-400">불러오는 중...</td>
+                  <td colSpan={scope === "all" ? 6 : 5} className="px-6 py-8 text-center text-gray-400">불러오는 중...</td>
                 </tr>
               )}
               {!loading && templates.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-gray-400">등록된 양식이 없습니다.</td>
+                  <td colSpan={scope === "all" ? 6 : 5} className="px-6 py-8 text-center text-gray-400">
+                    {scope === 'mine' && isSuperAdmin ? (
+                      <>
+                        내가 소유한 양식이 없습니다.
+                        <button onClick={() => { setScope('all'); reloadTemplates('all'); }} className="ml-1 text-indigo-600 hover:underline">
+                          전체 양식 보기
+                        </button>
+                      </>
+                    ) : (
+                      '등록된 양식이 없습니다.'
+                    )}
+                  </td>
                 </tr>
               )}
               {visibleTemplates.map((template) => (
@@ -265,6 +310,14 @@ export default function AdminTemplatesPage() {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="font-medium text-gray-900">{template.title}</div>
                   </td>
+                  {scope === 'all' && (
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {template.ownerName ?? '—'}
+                      {template.ownerId === myUserId && (
+                        <span className="ml-1 text-[10px] text-indigo-600">(나)</span>
+                      )}
+                    </td>
+                  )}
                   <td className="px-6 py-4">
                     <div className="flex flex-wrap gap-1 min-w-[150px] max-w-[240px]">
                       {(taxonomyByForm[template.id]?.categoryIds ?? []).map((id) => (
@@ -421,7 +474,7 @@ export default function AdminTemplatesPage() {
             folderTree={folderTree}
             initialCategoryIds={taxonomyByForm[assignTarget.id]?.categoryIds ?? []}
             initialFolderIds={taxonomyByForm[assignTarget.id]?.folderIds ?? []}
-            canEditCategories
+            canEditCategories={isSuperAdmin || assignTarget.ownerId === myUserId}
             onClose={() => setAssignTarget(null)}
             onSave={async (categoryIds, folderIds) => {
               const res = await fetch('/api/forms/taxonomy', {

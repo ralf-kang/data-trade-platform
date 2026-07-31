@@ -124,7 +124,7 @@ export default function DataMapPage() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col p-8">
       <div className="max-w-[1600px] mx-auto w-full">
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
           <div>
             <h1 className="text-3xl font-bold text-slate-900 flex items-center">
               <Network className="w-8 h-8 mr-3 text-indigo-600" />
@@ -144,9 +144,10 @@ export default function DataMapPage() {
           </Link>
         </div>
 
-        <div className="flex gap-4">
-          <div className="flex-1 bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <svg viewBox="0 0 1560 880" className="w-full h-[720px]">
+        <div className="flex flex-col xl:flex-row gap-4">
+          <div className="flex-1 min-w-0 bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <svg viewBox="0 0 1560 880" className="h-[720px] min-w-[1100px] w-full">
               <defs>
                 <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
                   <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8" />
@@ -237,6 +238,7 @@ export default function DataMapPage() {
                 );
               })}
             </svg>
+            </div>
 
             <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 flex flex-wrap gap-x-5 gap-y-2 text-[11px] text-slate-600">
               <span className="flex items-center gap-1.5">
@@ -258,7 +260,7 @@ export default function DataMapPage() {
             </div>
           </div>
 
-          <div className="w-80 shrink-0 bg-white rounded-xl border border-slate-200 p-5 h-fit sticky top-8">
+          <div className="w-full xl:w-80 shrink-0 bg-white rounded-xl border border-slate-200 p-5 h-fit xl:sticky xl:top-8">
             {!selectedNode ? (
               <div className="text-sm text-slate-500 flex items-start gap-2">
                 <Info className="w-4 h-4 mt-0.5 shrink-0 text-slate-400" />

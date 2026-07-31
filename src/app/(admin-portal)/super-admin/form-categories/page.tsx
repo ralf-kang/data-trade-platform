@@ -41,7 +41,7 @@ export default function FormCategoriesPage() {
   return (
     <div className="min-h-screen bg-slate-50 p-8">
       <div className="max-w-3xl mx-auto">
-        <div className="flex justify-between items-start mb-6">
+        <div className="flex flex-wrap justify-between items-start gap-4 mb-6">
           <div>
             <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-2">
               <FolderTree className="w-7 h-7 text-indigo-600" />

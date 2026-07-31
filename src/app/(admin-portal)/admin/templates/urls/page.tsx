@@ -74,7 +74,7 @@ export default function UrlManagerPage() {
     <div className="min-h-screen bg-slate-50 flex flex-col p-8">
       <div className="max-w-6xl mx-auto w-full">
 
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex flex-wrap justify-between items-center gap-4 mb-8">
           <div>
             <h1 className="text-3xl font-bold text-slate-900 flex items-center">
               <LinkIcon className="w-8 h-8 mr-3 text-indigo-600" />
@@ -82,7 +82,7 @@ export default function UrlManagerPage() {
             </h1>
             <p className="text-slate-500 mt-2">생성된 양식지들의 외부 접속용 URL 리스트를 조회하고, 오픈 상태를 제어합니다.</p>
           </div>
-          <Link href="/admin/dashboard" className="px-5 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
+          <Link href="/admin/dashboard" className="px-5 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors shrink-0 whitespace-nowrap">
             대시보드로 돌아가기
           </Link>
         </div>

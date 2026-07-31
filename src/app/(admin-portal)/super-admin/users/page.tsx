@@ -95,7 +95,7 @@ export default function AdminUsersManagementPage() {
     <div className="min-h-screen bg-slate-50 flex flex-col p-8">
       <div className="max-w-6xl mx-auto w-full">
 
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex flex-wrap justify-between items-center gap-4 mb-8">
           <div>
             <h1 className="text-3xl font-bold text-slate-900 flex items-center">
               <ShieldAlert className="w-8 h-8 mr-3 text-red-600" />
@@ -103,7 +103,7 @@ export default function AdminUsersManagementPage() {
             </h1>
             <p className="text-slate-500 mt-2">최고 관리자(Super Admin) 전용 메뉴입니다. 관리자 계정 속성, 권한, 대량 추출 허용 여부를 제어합니다.</p>
           </div>
-          <Link href="/super-admin" className="px-5 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
+          <Link href="/super-admin" className="px-5 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors shrink-0 whitespace-nowrap">
             슈퍼 어드민 대시보드
           </Link>
         </div>

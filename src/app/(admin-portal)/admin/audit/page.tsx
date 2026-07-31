@@ -41,7 +41,7 @@ export default function AuditLogsPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col p-8">
       <div className="max-w-6xl mx-auto w-full">
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex flex-wrap justify-between items-center gap-4 mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 flex items-center">
               <Activity className="w-8 h-8 mr-3 text-indigo-600" />

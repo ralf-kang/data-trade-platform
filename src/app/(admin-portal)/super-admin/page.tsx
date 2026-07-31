@@ -6,7 +6,7 @@ export default function SuperAdminPage() {
   return (
     <div className="p-8">
       <div className="max-w-6xl mx-auto">
-        <header className="flex justify-between items-center mb-8">
+        <header className="flex flex-wrap justify-between items-center gap-4 mb-8">
           <h1 className="text-3xl font-bold text-gray-900">최고관리자 (Super Admin) 대시보드</h1>
           <button className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 font-medium">
             신규 테넌트(조직) 생성
@@ -44,7 +44,7 @@ export default function SuperAdminPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Tenant A Box */}
               <div className="border border-gray-200 rounded-lg p-5 bg-white shadow-sm hover:shadow-md transition-shadow">
-                <div className="flex justify-between items-start mb-2">
+                <div className="flex flex-wrap justify-between items-start gap-4 mb-2">
                   <h4 className="font-bold text-gray-900 text-lg">영업본부 - 2026 하반기 마케팅 설문조사</h4>
                   <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-1 rounded">Live Data</span>
                 </div>
@@ -63,7 +63,7 @@ export default function SuperAdminPage() {
 
               {/* Tenant B Box */}
               <div className="border border-gray-200 rounded-lg p-5 bg-white shadow-sm hover:shadow-md transition-shadow">
-                <div className="flex justify-between items-start mb-2">
+                <div className="flex flex-wrap justify-between items-start gap-4 mb-2">
                   <h4 className="font-bold text-gray-900 text-lg">인사팀 - 사내 복지 수요조사</h4>
                   <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-2 py-1 rounded">Closed</span>
                 </div>

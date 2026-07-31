@@ -48,7 +48,7 @@ export default function AdminDashboardPage() {
     <div className="flex-1 overflow-y-auto bg-gray-50 p-8 min-h-screen">
       <div className="flex-1 overflow-y-auto p-8">
         <div className="max-w-6xl mx-auto">
-          <div className="flex justify-between items-center mb-8">
+          <div className="flex flex-wrap justify-between items-center gap-4 mb-8">
             <h1 className="text-3xl font-bold text-gray-900">관리자 대시보드</h1>
             <div className="flex space-x-3">
               <Link href="/admin/builder" className="px-5 py-2.5 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 shadow-sm transition-colors">

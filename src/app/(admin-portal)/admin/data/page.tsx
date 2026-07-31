@@ -35,7 +35,7 @@ export default function DataHubPage() {
     <div className="min-h-screen bg-slate-50 flex flex-col p-8">
       <div className="max-w-6xl mx-auto w-full">
 
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex flex-wrap justify-between items-center gap-4 mb-8">
           <div>
             <h1 className="text-3xl font-bold text-slate-900 flex items-center">
               <Database className="w-8 h-8 mr-3 text-indigo-600" />
@@ -97,7 +97,7 @@ export default function DataHubPage() {
           {!loading && filteredForms.map(form => (
             <div key={form.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow flex flex-col">
               <div className="p-6 flex-1">
-                <div className="flex justify-between items-start mb-4">
+                <div className="flex flex-wrap justify-between items-start gap-4 mb-4">
                   <div className="p-3 bg-indigo-50 text-indigo-600 rounded-lg">
                     <FileText className="w-6 h-6" />
                   </div>

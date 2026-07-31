@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Network, Search, ShieldAlert, X } from 'lucide-react';
+import { Network, Search, ShieldAlert, X , ChevronDown, ChevronRight} from 'lucide-react';
 
 interface FieldOption {
   id: string;
@@ -82,6 +82,7 @@ export default function FormLinksCanvasPage() {
   // 산업분야 필터 — 양식지가 많아지면 제목 검색만으로는 툴박스에서 찾기 어렵다.
   const [categoryTree, setCategoryTree] = useState<CategoryNode[]>([]);
   const [categoryFilter, setCategoryFilter] = useState<string>('');
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
   const [cards, setCards] = useState<CardState[]>([]);
   const [edges, setEdges] = useState<EdgeState[]>([]);
@@ -140,6 +141,41 @@ export default function FormLinksCanvasPage() {
     }
     return true;
   });
+
+  // 최상위 산업분야로 묶는다 — 하위까지 각각 그룹으로 만들면 그룹이 너무 잘게 쪼개져
+  // 오히려 훑어보기 어려워진다. 어디에도 속하지 않은 것은 "미분류"로 모은다.
+  const groupedForms = (() => {
+    const topLevel = categoryTree;
+    const idToTop = new Map<string, { id: string; name: string }>();
+    const mark = (nodes: CategoryNode[], top: { id: string; name: string }) => {
+      for (const n of nodes) {
+        idToTop.set(n.id, top);
+        mark(n.children, top);
+      }
+    };
+    for (const t of topLevel) mark([t], { id: t.id, name: t.name });
+
+    const buckets = new Map<string, { key: string; name: string; forms: FormOption[] }>();
+    const ensure = (key: string, name: string) => {
+      if (!buckets.has(key)) buckets.set(key, { key, name, forms: [] });
+      return buckets.get(key)!;
+    };
+    for (const t of topLevel) ensure(t.id, t.name);
+
+    for (const f of filteredForms) {
+      const tops = new Set((f.categoryIds ?? []).map((id) => idToTop.get(id)).filter(Boolean).map((t) => t!.id));
+      if (tops.size === 0) {
+        ensure('__none__', '미분류').forms.push(f);
+      } else {
+        // 여러 분야에 걸친 양식지는 각 그룹에 모두 나타난다(다대다이므로).
+        for (const topId of tops) {
+          const top = topLevel.find((t) => t.id === topId);
+          if (top) ensure(top.id, top.name).forms.push(f);
+        }
+      }
+    }
+    return [...buckets.values()].filter((b) => b.forms.length > 0);
+  })();
 
   const addCard = (form: FormOption) => {
     if (cards.some((c) => c.formId === form.formId)) return;
@@ -313,45 +349,94 @@ export default function FormLinksCanvasPage() {
             테스트가 자동 실행됩니다.
           </p>
         </div>
-        <Link href="/super-admin" className="px-4 py-2 text-sm text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50">
+        <Link href="/super-admin" className="px-4 py-2 text-sm text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 shrink-0 whitespace-nowrap">
           슈퍼 어드민 대시보드
         </Link>
       </div>
 
       <div className="flex-1 flex">
-        <div className="w-64 bg-white border-r border-slate-200 p-4 space-y-2 overflow-y-auto">
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            className="w-full mb-2 px-2 py-2 border border-slate-300 rounded-lg text-sm bg-white"
-          >
-            <option value="">전체 산업분야</option>
-            {flatCategories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {'\u00A0'.repeat(c.depth * 2)}
-                {c.name}
-              </option>
-            ))}
-          </select>
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-2 top-2.5 text-slate-400" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="양식지 검색"
-              className="w-full pl-8 pr-2 py-2 border border-slate-300 rounded-lg text-sm"
-            />
-          </div>
-          {filteredForms.map((f) => (
-            <button
-              key={f.formId}
-              onClick={() => addCard(f)}
-              disabled={cards.some((c) => c.formId === f.formId)}
-              className="w-full text-left px-3 py-2 rounded-lg border border-slate-200 text-sm hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed"
+        {/* 툴박스 — 양식지가 많아지면 평면 목록으로는 찾기 어려우므로 산업분야로 묶어
+            접었다 펼 수 있게 한다. 검색·필터는 스크롤과 무관하게 항상 보이도록 고정한다. */}
+        <div className="w-72 bg-white border-r border-slate-200 flex flex-col shrink-0">
+          <div className="p-3 border-b border-slate-100 space-y-2 shrink-0">
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="w-full px-2 py-2 border border-slate-300 rounded-lg text-sm bg-white"
             >
-              {f.title}
-            </button>
-          ))}
+              <option value="">전체 산업분야</option>
+              {flatCategories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {'\u00A0'.repeat(c.depth * 2)}
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-2 top-2.5 text-slate-400" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="양식지 검색"
+                className="w-full pl-8 pr-2 py-2 border border-slate-300 rounded-lg text-sm"
+              />
+            </div>
+            <p className="text-[11px] text-slate-400">
+              전체 {allForms.length}건 중 <strong className="text-slate-600">{filteredForms.length}건</strong> 표시
+              {cards.length > 0 && ` · 캔버스에 ${cards.length}건`}
+            </p>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            {groupedForms.map((group) => {
+              const open = !collapsedGroups.has(group.key);
+              return (
+                <div key={group.key}>
+                  <button
+                    onClick={() =>
+                      setCollapsedGroups((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(group.key)) next.delete(group.key);
+                        else next.add(group.key);
+                        return next;
+                      })
+                    }
+                    className="w-full flex items-center gap-1 px-2 py-1.5 text-[11px] font-bold text-slate-500 uppercase tracking-wide hover:bg-slate-50 rounded"
+                  >
+                    {open ? <ChevronDown className="w-3 h-3 shrink-0" /> : <ChevronRight className="w-3 h-3 shrink-0" />}
+                    <span className="truncate">{group.name}</span>
+                    <span className="ml-auto text-slate-400 shrink-0">{group.forms.length}</span>
+                  </button>
+
+                  {open && (
+                    <div className="space-y-1 pl-1">
+                      {group.forms.map((f) => {
+                        const onCanvas = cards.some((c) => c.formId === f.formId);
+                        return (
+                          <button
+                            key={f.formId}
+                            onClick={() => addCard(f)}
+                            disabled={onCanvas}
+                            title={f.title}
+                            className="w-full text-left px-2.5 py-2 rounded-lg border border-slate-200 text-sm hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <span className="block truncate">{f.title}</span>
+                            <span className="block text-[10px] text-slate-400">
+                              문항 {f.fields.length}개{onCanvas ? ' · 캔버스에 있음' : ''}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {filteredForms.length === 0 && (
+              <p className="text-xs text-slate-400 text-center py-6">조건에 맞는 양식지가 없습니다.</p>
+            )}
+          </div>
         </div>
 
         <div

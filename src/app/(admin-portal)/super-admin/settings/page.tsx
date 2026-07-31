@@ -79,7 +79,7 @@ export default function SuperAdminSettingsPage() {
     <div className="min-h-screen bg-slate-50 flex flex-col p-8">
       <div className="max-w-4xl mx-auto w-full">
         
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex flex-wrap justify-between items-center gap-4 mb-8">
           <div>
             <h1 className="text-3xl font-bold text-slate-900 flex items-center">
               <Settings className="w-8 h-8 mr-3 text-slate-700" />
@@ -87,7 +87,7 @@ export default function SuperAdminSettingsPage() {
             </h1>
             <p className="text-slate-500 mt-2">최고 관리자(Super Admin) 전용 글로벌 시스템 설정 페이지입니다.</p>
           </div>
-          <Link href="/super-admin" className="px-5 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
+          <Link href="/super-admin" className="px-5 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors shrink-0 whitespace-nowrap">
             슈퍼 어드민 대시보드
           </Link>
         </div>
