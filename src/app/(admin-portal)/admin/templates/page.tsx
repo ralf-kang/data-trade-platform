@@ -181,8 +181,8 @@ export default function AdminTemplatesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-5xl mx-auto">
+    <div className="min-h-screen bg-gray-50 px-4 py-6">
+      <div className="w-full">
         <div className="flex flex-wrap justify-between items-center gap-4 mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">양식 템플릿 관리</h1>
@@ -222,9 +222,9 @@ export default function AdminTemplatesPage() {
           <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-2.5 text-sm text-rose-700 mb-4">{taxonomyError}</div>
         )}
 
-        <div className="flex flex-col lg:flex-row gap-6">
+        <div className="flex flex-col lg:flex-row gap-4">
         {/* 좌측: 두 축의 필터. 전사 공통(산업분야)과 개인(폴더)을 시각적으로 분리한다. */}
-        <aside className="w-full lg:w-64 shrink-0 space-y-4">
+        <aside className="w-full lg:w-56 shrink-0 space-y-4">
           <div className="bg-white rounded-xl border border-gray-200 p-4">
             <div className="flex items-center gap-1.5 mb-1">
               <FolderTree className="w-4 h-4 text-indigo-600" />
@@ -273,25 +273,25 @@ export default function AdminTemplatesPage() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">양식 제목</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">양식 제목</th>
                 {scope === 'all' && (
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">소유자</th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">소유자</th>
                 )}
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">분류</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">필드 수</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">생성일</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">분류</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">필드</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">생성일</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">관리/작업</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {loading && (
                 <tr>
-                  <td colSpan={scope === "all" ? 6 : 5} className="px-6 py-8 text-center text-gray-400">불러오는 중...</td>
+                  <td colSpan={scope === "all" ? 6 : 5} className="px-3 py-8 text-center text-gray-400">불러오는 중...</td>
                 </tr>
               )}
               {!loading && templates.length === 0 && (
                 <tr>
-                  <td colSpan={scope === "all" ? 6 : 5} className="px-6 py-8 text-center text-gray-400">
+                  <td colSpan={scope === "all" ? 6 : 5} className="px-3 py-8 text-center text-gray-400">
                     {scope === 'mine' && isSuperAdmin ? (
                       <>
                         내가 소유한 양식이 없습니다.
@@ -307,19 +307,19 @@ export default function AdminTemplatesPage() {
               )}
               {visibleTemplates.map((template) => (
                 <tr key={template.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-3 py-3 whitespace-nowrap">
                     <div className="font-medium text-gray-900">{template.title}</div>
                   </td>
                   {scope === 'all' && (
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-500">
                       {template.ownerName ?? '—'}
                       {template.ownerId === myUserId && (
                         <span className="ml-1 text-[10px] text-indigo-600">(나)</span>
                       )}
                     </td>
                   )}
-                  <td className="px-6 py-4">
-                    <div className="flex flex-wrap gap-1 min-w-[150px] max-w-[240px]">
+                  <td className="px-3 py-3">
+                    <div className="flex flex-wrap gap-1 min-w-[140px] max-w-[260px]">
                       {(taxonomyByForm[template.id]?.categoryIds ?? []).map((id) => (
                         <span key={id} className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 whitespace-nowrap">
                           {categoryNameById.get(id) ?? '—'}
@@ -336,25 +336,25 @@ export default function AdminTemplatesPage() {
                         )}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                  <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-500">
                     {template.fields?.length || 0}개
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-gray-500">
-                    {template.createdAt.slice(0, 16).replace('T', ' ')}
+                  <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-500">
+                    {template.createdAt.slice(0, 10)}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right font-medium">
-                    <div className="flex justify-end space-x-3">
-                      <button onClick={() => setAssignTarget(template)} className="text-slate-600 hover:text-slate-900 flex items-center" title="산업분야·폴더 지정">
-                        <Tags className="w-4 h-4 mr-1" /> 분류
+                  <td className="px-3 py-3 whitespace-nowrap text-right font-medium">
+                    <div className="flex justify-end items-center gap-0.5">
+                      <button onClick={() => setAssignTarget(template)} className="p-1.5 rounded text-slate-500 hover:text-slate-900 hover:bg-slate-100" title="분류 지정 (산업분야·폴더)">
+                        <Tags className="w-4 h-4" />
                       </button>
-                      <button onClick={() => openCloneModal(template)} className="text-indigo-600 hover:text-indigo-900 flex items-center" title="이 양식을 기반으로 복사">
-                        <Copy className="w-4 h-4 mr-1" /> 복사(Clone)
+                      <button onClick={() => openCloneModal(template)} className="p-1.5 rounded text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50" title="이 양식을 기반으로 복사">
+                        <Copy className="w-4 h-4" />
                       </button>
-                      <a href={`/admin/builder?id=${template.id}`} className="text-blue-600 hover:text-blue-900 flex items-center">
-                        <Edit3 className="w-4 h-4 mr-1" /> 편집
+                      <a href={`/admin/builder?id=${template.id}`} className="p-1.5 rounded text-blue-600 hover:text-blue-900 hover:bg-blue-50" title="편집">
+                        <Edit3 className="w-4 h-4" />
                       </a>
-                      <button onClick={() => handleDelete(template.id)} className="text-red-600 hover:text-red-900 flex items-center">
-                        <Trash2 className="w-4 h-4 mr-1" /> 삭제
+                      <button onClick={() => handleDelete(template.id)} className="p-1.5 rounded text-red-600 hover:text-red-900 hover:bg-red-50" title="삭제">
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </td>
@@ -373,16 +373,16 @@ export default function AdminTemplatesPage() {
         {/* 내가 부여한 공유(제출 데이터 조회) 권한 — 요구사항: "다른 관리자에게 내가 준
             권한은 내 양식지 관리 화면에서 조회 할 수 있어야 한다." */}
         <div className="mt-8 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200 flex items-center">
+          <div className="px-4 py-3 border-b border-gray-200 flex items-center">
             <Users className="w-5 h-5 mr-2 text-indigo-600" />
             <h2 className="font-bold text-gray-900">내가 부여한 제출 데이터 조회 권한</h2>
           </div>
           {grantedShares.length === 0 ? (
-            <div className="px-6 py-6 text-center text-gray-400 text-sm">부여한 공유 권한이 없습니다.</div>
+            <div className="px-4 py-6 text-center text-gray-400 text-sm">부여한 공유 권한이 없습니다.</div>
           ) : (
             <ul className="divide-y divide-gray-100">
               {grantedShares.map((s) => (
-                <li key={s.id} className="px-6 py-3 flex items-center justify-between text-sm">
+                <li key={s.id} className="px-4 py-2.5 flex items-center justify-between text-sm">
                   <span className="text-gray-700">
                     <strong className="text-gray-900">{s.fromUser.name}</strong>({s.fromUser.email}) 님에게 양식 <span className="font-mono text-indigo-600">{s.formId}</span> 조회 권한 부여
                   </span>
