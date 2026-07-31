@@ -15,6 +15,14 @@ interface FormOption {
   formId: string;
   title: string;
   fields: FieldOption[];
+  categoryIds?: string[];
+}
+
+interface CategoryNode {
+  id: string;
+  name: string;
+  depth: number;
+  children: CategoryNode[];
 }
 
 interface CardState {
@@ -71,6 +79,9 @@ export default function FormLinksCanvasPage() {
   const [showConsentModal, setShowConsentModal] = useState(false);
 
   const [allForms, setAllForms] = useState<FormOption[]>([]);
+  // 산업분야 필터 — 양식지가 많아지면 제목 검색만으로는 툴박스에서 찾기 어렵다.
+  const [categoryTree, setCategoryTree] = useState<CategoryNode[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState<string>('');
   const [search, setSearch] = useState('');
   const [cards, setCards] = useState<CardState[]>([]);
   const [edges, setEdges] = useState<EdgeState[]>([]);
@@ -90,7 +101,10 @@ export default function FormLinksCanvasPage() {
       });
     fetch('/api/super-admin/form-links/forms')
       .then((r) => (r.ok ? r.json() : { forms: [] }))
-      .then((j) => setAllForms(j.forms ?? []));
+      .then((j) => {
+        setAllForms(j.forms ?? []);
+        setCategoryTree(j.categoryTree ?? []);
+      });
   }, []);
 
   const handleAckConsent = async () => {
@@ -98,7 +112,34 @@ export default function FormLinksCanvasPage() {
     setShowConsentModal(false);
   };
 
-  const filteredForms = allForms.filter((f) => f.title.toLowerCase().includes(search.toLowerCase()));
+  // 상위 분류를 고르면 하위까지 포함해야 한다.
+  const subtreeIds = (nodes: CategoryNode[], target: string): string[] => {
+    const out: string[] = [];
+    const walk = (list: CategoryNode[], inside: boolean) => {
+      for (const n of list) {
+        const now = inside || n.id === target;
+        if (now) out.push(n.id);
+        walk(n.children, now);
+      }
+    };
+    walk(nodes, false);
+    return out;
+  };
+  const flatCategories = (() => {
+    const out: CategoryNode[] = [];
+    const walk = (l: CategoryNode[]) => l.forEach((n) => { out.push(n); walk(n.children); });
+    walk(categoryTree);
+    return out;
+  })();
+
+  const filteredForms = allForms.filter((f) => {
+    if (!f.title.toLowerCase().includes(search.toLowerCase())) return false;
+    if (categoryFilter) {
+      const ids = new Set(subtreeIds(categoryTree, categoryFilter));
+      if (!(f.categoryIds ?? []).some((id) => ids.has(id))) return false;
+    }
+    return true;
+  });
 
   const addCard = (form: FormOption) => {
     if (cards.some((c) => c.formId === form.formId)) return;
@@ -279,6 +320,19 @@ export default function FormLinksCanvasPage() {
 
       <div className="flex-1 flex">
         <div className="w-64 bg-white border-r border-slate-200 p-4 space-y-2 overflow-y-auto">
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="w-full mb-2 px-2 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+          >
+            <option value="">전체 산업분야</option>
+            {flatCategories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {'\u00A0'.repeat(c.depth * 2)}
+                {c.name}
+              </option>
+            ))}
+          </select>
           <div className="relative">
             <Search className="w-4 h-4 absolute left-2 top-2.5 text-slate-400" />
             <input

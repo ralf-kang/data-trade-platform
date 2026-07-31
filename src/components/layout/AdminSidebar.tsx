@@ -17,7 +17,8 @@ import {
   Network,
   Cloud,
   Link2,
-  BookOpen
+  BookOpen,
+  FolderTree
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { AccountMenu } from './AccountMenu';
@@ -43,6 +44,7 @@ export function AdminSidebar({ role = 'admin' }: AdminSidebarProps) {
     { name: '슈퍼 어드민 대시보드', href: '/super-admin', icon: CreditCard },
     { name: '조직 및 관리자 제어', href: '/super-admin/users', icon: ShieldAlert },
     { name: '개인정보취급자 명부', href: '/super-admin/author-authorizations', icon: UserCog },
+    { name: '산업분야 분류 관리', href: '/super-admin/form-categories', icon: FolderTree },
     { name: '데이터 구조 관계도', href: '/super-admin/data-map', icon: Network },
     { name: '양식지 관계 캔버스', href: '/super-admin/form-links', icon: Link2 },
     { name: '전체 행동 감사 (Audit)', href: '/admin/audit', icon: Activity },

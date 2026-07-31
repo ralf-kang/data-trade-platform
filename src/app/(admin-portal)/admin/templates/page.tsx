@@ -1,13 +1,69 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Copy, Edit3, Trash2, CheckCircle2, Circle, Users } from 'lucide-react';
+import { Copy, Edit3, Trash2, CheckCircle2, Circle, Users, Tags, FolderTree, X } from 'lucide-react';
 import type { FormListItem, ShareRequestItem } from '@/lib/apiTypes';
+import TreeEditor, { type TreeNode } from '@/components/taxonomy/TreeEditor';
+import TaxonomyAssignModal from '@/components/taxonomy/TaxonomyAssignModal';
+
+interface Taxonomy { categoryIds: string[]; folderIds: string[] }
+
+/** 트리에서 특정 노드와 그 하위 id를 모두 모은다 — 상위를 고르면 하위도 함께 걸려야 한다. */
+function subtreeIds(tree: TreeNode[], targetId: string): string[] {
+  const out: string[] = [];
+  const walk = (nodes: TreeNode[], inside: boolean) => {
+    for (const n of nodes) {
+      const now = inside || n.id === targetId;
+      if (now) out.push(n.id);
+      walk(n.children, now);
+    }
+  };
+  walk(tree, false);
+  return out;
+}
+
+function flattenTree(nodes: TreeNode[]): TreeNode[] {
+  const out: TreeNode[] = [];
+  const walk = (l: TreeNode[]) => l.forEach((n) => { out.push(n); walk(n.children); });
+  walk(nodes);
+  return out;
+}
 
 export default function AdminTemplatesPage() {
   const [templates, setTemplates] = useState<FormListItem[]>([]);
   const [grantedShares, setGrantedShares] = useState<ShareRequestItem[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // 분류(전사 공통) / 폴더(개인) 두 축 — 서로 독립이므로 필터도 각각 둔다.
+  const [categoryTree, setCategoryTree] = useState<TreeNode[]>([]);
+  const [folderTree, setFolderTree] = useState<TreeNode[]>([]);
+  const [taxonomyByForm, setTaxonomyByForm] = useState<Record<string, Taxonomy>>({});
+  const [filterCategoryId, setFilterCategoryId] = useState<string | null>(null);
+  const [filterFolderId, setFilterFolderId] = useState<string | null>(null);
+  const [assignTarget, setAssignTarget] = useState<FormListItem | null>(null);
+  const [taxonomyError, setTaxonomyError] = useState<string | null>(null);
+
+  const loadTaxonomy = () =>
+    fetch('/api/forms/taxonomy')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!j) return;
+        setCategoryTree(j.categoryTree ?? []);
+        setFolderTree(j.folderTree ?? []);
+        setTaxonomyByForm(j.byForm ?? {});
+      })
+      .catch(() => undefined);
+
+  const folderApi = async (init: RequestInit & { url?: string }) => {
+    setTaxonomyError(null);
+    const res = await fetch(init.url ?? '/api/form-folders', init);
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      setTaxonomyError(j.message ?? '처리에 실패했습니다.');
+      return;
+    }
+    await loadTaxonomy();
+  };
 
   // 목록 재조회(복사 후 새로고침 등 이벤트 핸들러 전용) — 로딩 상태를 다시 true로 보여준다.
   const reloadTemplates = () => {
@@ -32,7 +88,26 @@ export default function AdminTemplatesPage() {
         setGrantedShares(received.filter((r) => r.status === 'APPROVED'));
       })
       .finally(() => setLoading(false));
+    loadTaxonomy();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 필터 적용 — 상위 노드를 고르면 하위까지 포함한다.
+  const visibleTemplates = templates.filter((t) => {
+    const tax = taxonomyByForm[t.id];
+    if (filterCategoryId) {
+      const ids = new Set(subtreeIds(categoryTree, filterCategoryId));
+      if (!tax?.categoryIds.some((id) => ids.has(id))) return false;
+    }
+    if (filterFolderId) {
+      const ids = new Set(subtreeIds(folderTree, filterFolderId));
+      if (!tax?.folderIds.some((id) => ids.has(id))) return false;
+    }
+    return true;
+  });
+
+  const categoryNameById = new Map(flattenTree(categoryTree).map((n) => [n.id, n.name]));
+  const folderNameById = new Map(flattenTree(folderTree).map((n) => [n.id, n.name]));
 
   const [showCloneModal, setShowCloneModal] = useState(false);
   const [selectedTemplateForClone, setSelectedTemplateForClone] = useState<FormListItem | null>(null);
@@ -108,11 +183,63 @@ export default function AdminTemplatesPage() {
           </a>
         </div>
 
+        {taxonomyError && (
+          <div className="bg-rose-50 border border-rose-200 rounded-lg px-4 py-2.5 text-sm text-rose-700 mb-4">{taxonomyError}</div>
+        )}
+
+        <div className="flex flex-col lg:flex-row gap-6">
+        {/* 좌측: 두 축의 필터. 전사 공통(산업분야)과 개인(폴더)을 시각적으로 분리한다. */}
+        <aside className="w-full lg:w-64 shrink-0 space-y-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="flex items-center gap-1.5 mb-1">
+              <FolderTree className="w-4 h-4 text-indigo-600" />
+              <h2 className="font-bold text-slate-800 text-sm">산업분야</h2>
+            </div>
+            <p className="text-[11px] text-slate-400 mb-2">전사 공통 · 슈퍼관리자가 관리</p>
+            {filterCategoryId && (
+              <button onClick={() => setFilterCategoryId(null)} className="text-[11px] text-indigo-600 hover:underline mb-2 flex items-center gap-0.5">
+                <X className="w-3 h-3" /> 필터 해제
+              </button>
+            )}
+            <TreeEditor tree={categoryTree} readOnly selectedId={filterCategoryId} onSelect={setFilterCategoryId} />
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Tags className="w-4 h-4 text-amber-500" />
+              <h2 className="font-bold text-slate-800 text-sm">내 폴더</h2>
+            </div>
+            <p className="text-[11px] text-slate-400 mb-2">나만 보임 · 자유롭게 만들 수 있음</p>
+            {filterFolderId && (
+              <button onClick={() => setFilterFolderId(null)} className="text-[11px] text-indigo-600 hover:underline mb-2 flex items-center gap-0.5">
+                <X className="w-3 h-3" /> 필터 해제
+              </button>
+            )}
+            <TreeEditor
+              tree={folderTree}
+              selectedId={filterFolderId}
+              onSelect={setFilterFolderId}
+              onCreate={async (name, parentId) => {
+                await folderApi({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, parentId }) });
+              }}
+              onRename={async (id, name) => {
+                await folderApi({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, name }) });
+              }}
+              onDelete={async (id) => {
+                if (!confirm('이 폴더를 삭제할까요? 안에 있던 양식지는 삭제되지 않고 폴더에서만 빠집니다.')) return;
+                await folderApi({ method: 'DELETE', url: `/api/form-folders?id=${id}` });
+              }}
+            />
+          </div>
+        </aside>
+
+        <div className="flex-1 min-w-0">
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">양식 제목</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">분류</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">필드 수</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">생성일</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">관리/작업</th>
@@ -121,18 +248,36 @@ export default function AdminTemplatesPage() {
             <tbody className="bg-white divide-y divide-gray-200">
               {loading && (
                 <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-gray-400">불러오는 중...</td>
+                  <td colSpan={5} className="px-6 py-8 text-center text-gray-400">불러오는 중...</td>
                 </tr>
               )}
               {!loading && templates.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-gray-400">등록된 양식이 없습니다.</td>
+                  <td colSpan={5} className="px-6 py-8 text-center text-gray-400">등록된 양식이 없습니다.</td>
                 </tr>
               )}
-              {templates.map((template) => (
+              {visibleTemplates.map((template) => (
                 <tr key={template.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="font-medium text-gray-900">{template.title}</div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-wrap gap-1 max-w-[220px]">
+                      {(taxonomyByForm[template.id]?.categoryIds ?? []).map((id) => (
+                        <span key={id} className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          {categoryNameById.get(id) ?? '—'}
+                        </span>
+                      ))}
+                      {(taxonomyByForm[template.id]?.folderIds ?? []).map((id) => (
+                        <span key={id} className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                          {folderNameById.get(id) ?? '—'}
+                        </span>
+                      ))}
+                      {!taxonomyByForm[template.id]?.categoryIds.length &&
+                        !taxonomyByForm[template.id]?.folderIds.length && (
+                          <span className="text-[11px] text-slate-300">미분류</span>
+                        )}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-gray-500">
                     {template.fields?.length || 0}개
@@ -142,6 +287,9 @@ export default function AdminTemplatesPage() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right font-medium">
                     <div className="flex justify-end space-x-3">
+                      <button onClick={() => setAssignTarget(template)} className="text-slate-600 hover:text-slate-900 flex items-center" title="산업분야·폴더 지정">
+                        <Tags className="w-4 h-4 mr-1" /> 분류
+                      </button>
                       <button onClick={() => openCloneModal(template)} className="text-indigo-600 hover:text-indigo-900 flex items-center" title="이 양식을 기반으로 복사">
                         <Copy className="w-4 h-4 mr-1" /> 복사(Clone)
                       </button>
@@ -158,6 +306,12 @@ export default function AdminTemplatesPage() {
             </tbody>
           </table>
         </div>
+
+        {filterCategoryId || filterFolderId ? (
+          <p className="text-xs text-slate-400 mt-2">
+            필터 적용 중 — 전체 {templates.length}건 중 {visibleTemplates.length}건 표시
+          </p>
+        ) : null}
 
         {/* 내가 부여한 공유(제출 데이터 조회) 권한 — 요구사항: "다른 관리자에게 내가 준
             권한은 내 양식지 관리 화면에서 조회 할 수 있어야 한다." */}
@@ -180,6 +334,8 @@ export default function AdminTemplatesPage() {
               ))}
             </ul>
           )}
+        </div>
+        </div>
         </div>
 
         {/* Partial Clone Modal */}
@@ -252,6 +408,31 @@ export default function AdminTemplatesPage() {
               </div>
             </div>
           </div>
+        )}
+
+        {assignTarget && (
+          <TaxonomyAssignModal
+            formTitle={assignTarget.title}
+            categoryTree={categoryTree}
+            folderTree={folderTree}
+            initialCategoryIds={taxonomyByForm[assignTarget.id]?.categoryIds ?? []}
+            initialFolderIds={taxonomyByForm[assignTarget.id]?.folderIds ?? []}
+            canEditCategories
+            onClose={() => setAssignTarget(null)}
+            onSave={async (categoryIds, folderIds) => {
+              const res = await fetch('/api/forms/taxonomy', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ formId: assignTarget.id, categoryIds, folderIds }),
+              });
+              if (!res.ok) {
+                const j = await res.json().catch(() => ({}));
+                setTaxonomyError(j.message ?? '분류 저장에 실패했습니다.');
+                return;
+              }
+              await loadTaxonomy();
+            }}
+          />
         )}
       </div>
     </div>

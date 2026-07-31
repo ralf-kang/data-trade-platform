@@ -239,6 +239,40 @@ const POINT_LEDGER_SEED: Array<{
   { userEmail: 'admin@example.com', delta: 100, reason: 'IT 장비 지급 요청서 응답', status: 'REJECTED', statusReason: '중복 제출', daysAgo: 10 },
 ];
 
+
+// ---------------------------------------------------------------------------
+// 산업분야 분류 기본값 (docs — 양식지 분류 두 축 중 "전사 공통 어휘" 쪽)
+// ---------------------------------------------------------------------------
+// 공식 표준분류를 그대로 옮긴 것이 아니라, 사내에서 바로 쓸 수 있게 추린 **출발점**이다.
+// 슈퍼관리자가 화면에서 자유롭게 고치고 늘릴 수 있으므로, 여기서는 흔한 대분류와
+// 그 아래 실무 단위만 얕게 깔아 둔다(빈 트리로 시작하면 첫 사용자가 막막해진다).
+const DEFAULT_CATEGORIES: Array<{ name: string; children: string[] }> = [
+  { name: '제조', children: ['품질관리', '생산·설비', '자재·구매', '안전·환경'] },
+  { name: '건설·플랜트', children: ['시공관리', '안전점검', '기자재 검수'] },
+  { name: '정보통신·IT', children: ['서비스 운영', '보안', '고객지원'] },
+  { name: '시험·인증', children: ['시험 의뢰', '성적서 발급', '표준·교정'] },
+  { name: '연구개발', children: ['과제 관리', '실험 기록'] },
+  { name: '공공·행정', children: ['민원', '조사·통계'] },
+  { name: '경영지원', children: ['인사', '총무', '재무·회계', '교육'] },
+];
+
+async function seedCategories() {
+  for (const [i, top] of DEFAULT_CATEGORIES.entries()) {
+    // 이름으로 조회 후 생성한다 — parentId가 nullable이라 복합 unique가 최상위에서
+    // 동작하지 않으므로 upsert(where)를 쓸 수 없다(formTaxonomyService 주석 참고).
+    let parent = await prisma.formCategory.findFirst({ where: { name: top.name, parentId: null } });
+    if (!parent) {
+      parent = await prisma.formCategory.create({ data: { name: top.name, parentId: null, sortOrder: i } });
+    }
+    for (const [j, child] of top.children.entries()) {
+      const existing = await prisma.formCategory.findFirst({ where: { name: child, parentId: parent.id } });
+      if (!existing) {
+        await prisma.formCategory.create({ data: { name: child, parentId: parent.id, sortOrder: j } });
+      }
+    }
+  }
+}
+
 async function main() {
   console.log('[seed] Elasticsearch 인덱스 확인/생성...');
   await ensureIndices();
@@ -323,6 +357,9 @@ async function main() {
       });
     }
   }
+
+  console.log('[seed] 산업분야 분류 기본값 생성...');
+  await seedCategories();
 
   console.log('[seed] 감사 로그 생성...');
   for (const log of AUDIT_LOGS) {
