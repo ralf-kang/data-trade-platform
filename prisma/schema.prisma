@@ -204,6 +204,7 @@ model User {
   shareRequestsReceived      ShareRequest[]                @relation("ShareRequestTo")
   notifications              AdminNotification[]
   correctionRequestsReceived SubmissionCorrectionRequest[]
+  formFolders                FormFolder[]
 
   @@index([department])
   @@index([source, status])
@@ -278,16 +279,18 @@ model FormRegistry {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  shareRequests      ShareRequest[]
-  auditLogs          AuditLog[]
-  notifications      AdminNotification[]
-  apiKeys            ApiKey[]
-  scopedRoles        UserRole[]
-  respondentTokens   RespondentToken[]
-  anonymousBuffer    AnonymousResponseBuffer[]
-  campaigns          Campaign[]
-  schedule           CampaignSchedule?
-  correctionRequests SubmissionCorrectionRequest[]
+  shareRequests       ShareRequest[]
+  auditLogs           AuditLog[]
+  notifications       AdminNotification[]
+  apiKeys             ApiKey[]
+  scopedRoles         UserRole[]
+  respondentTokens    RespondentToken[]
+  anonymousBuffer     AnonymousResponseBuffer[]
+  campaigns           Campaign[]
+  schedule            CampaignSchedule?
+  correctionRequests  SubmissionCorrectionRequest[]
+  categoryAssignments FormCategoryAssignment[]
+  folderItems         FormFolderItem[]
 
   @@map("form_registry")
 }
@@ -895,4 +898,81 @@ model ExternalEndpointConfig {
   updatedAt     DateTime     @updatedAt
 
   @@map("external_endpoint_config")
+}
+
+// ---------------------------------------------------------------------------
+// 양식지 분류 — 서로 독립된 두 축
+// ---------------------------------------------------------------------------
+// 두 축을 하나의 트리로 합치지 않는 이유:
+//   · 산업분야(FormCategory)는 **전사 공통 어휘**다. 모두가 같은 말을 써야 부서를 넘어
+//     비교·집계가 되므로, 아무나 고칠 수 있으면 분류체계로서의 가치가 사라진다.
+//     따라서 슈퍼관리자만 편집한다.
+//   · 개인 폴더(FormFolder)는 **작업 편의**다. 가치가 "내가 생각하는 방식과 맞는가"에서
+//     오므로 남이 보면 오히려 잡음이다. 따라서 소유자에게만 보인다.
+// 둘은 서로 다른 질문에 답한다 — "이건 어떤 종류의 양식인가" vs "내가 어디 뒀더라".
+
+/// 산업분야 분류(전사 공통). 슈퍼관리자 전용 편집.
+model FormCategory {
+  id        String         @id @default(cuid())
+  name      String
+  // 자기참조 트리. null이면 최상위(산업 대분류).
+  parentId  String?
+  parent    FormCategory?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children  FormCategory[] @relation("CategoryTree")
+  // 목록 표시 순서 — 이름순 정렬은 업무 중요도와 무관해 실무에서 잘 안 맞는다.
+  sortOrder Int            @default(0)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  assignments FormCategoryAssignment[]
+
+  @@index([parentId])
+  @@map("form_categories")
+}
+
+/// 양식지 ↔ 산업분야 (다대다). 하나의 양식지가 여러 분야에 걸칠 수 있다.
+model FormCategoryAssignment {
+  formId     String
+  form       FormRegistry @relation(fields: [formId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   FormCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  assignedAt DateTime     @default(now())
+  assignedBy String
+
+  @@id([formId, categoryId])
+  @@index([categoryId])
+  @@map("form_category_assignments")
+}
+
+/// 개인 폴더. 소유자에게만 보이는 정리용 트리.
+model FormFolder {
+  id        String       @id @default(cuid())
+  ownerId   String
+  owner     User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name      String
+  parentId  String?
+  parent    FormFolder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children  FormFolder[] @relation("FolderTree")
+  sortOrder Int          @default(0)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  items FormFolderItem[]
+
+  @@index([ownerId])
+  @@index([parentId])
+  @@map("form_folders")
+}
+
+/// 양식지 ↔ 개인 폴더 (다대다).
+model FormFolderItem {
+  folderId String
+  folder   FormFolder   @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  formId   String
+  form     FormRegistry @relation(fields: [formId], references: [id], onDelete: Cascade)
+  addedAt  DateTime     @default(now())
+
+  @@id([folderId, formId])
+  @@index([formId])
+  @@map("form_folder_items")
 }
