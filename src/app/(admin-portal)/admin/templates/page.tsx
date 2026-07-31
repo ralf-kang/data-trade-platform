@@ -5,6 +5,7 @@ import { Copy, Edit3, Trash2, CheckCircle2, Circle, Users, Tags, FolderTree, X }
 import type { FormListItem, ShareRequestItem } from '@/lib/apiTypes';
 import TreeEditor, { type TreeNode } from '@/components/taxonomy/TreeEditor';
 import TaxonomyAssignModal from '@/components/taxonomy/TaxonomyAssignModal';
+import HelpLink from '@/components/manual/HelpLink';
 
 interface Taxonomy { categoryIds: string[]; folderIds: string[] }
 
@@ -178,9 +179,12 @@ export default function AdminTemplatesPage() {
             <h1 className="text-3xl font-bold text-gray-900">내 템플릿 관리</h1>
             <p className="text-gray-500 mt-2">내가 소유한 양식만 표시됩니다. 관리하고 복사하여 새로운 양식을 만들 수 있습니다.</p>
           </div>
-          <a href="/admin/builder" className="bg-blue-600 text-white px-5 py-2.5 rounded-lg font-bold hover:bg-blue-700">
-            + 새 양식 만들기 (빈 양식)
-          </a>
+          <div className="flex items-center gap-2 shrink-0">
+            <HelpLink />
+            <a href="/admin/builder" className="bg-blue-600 text-white px-5 py-2.5 rounded-lg font-bold hover:bg-blue-700">
+              + 새 양식 만들기 (빈 양식)
+            </a>
+          </div>
         </div>
 
         {taxonomyError && (
