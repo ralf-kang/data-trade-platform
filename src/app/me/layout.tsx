@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { LayoutDashboard, FileText, TrendingUp, Coins, ShieldCheck, AlertTriangle } from 'lucide-react';
+import { LayoutDashboard, FileText, TrendingUp, Coins, ShieldCheck, AlertTriangle, BookOpen } from 'lucide-react';
 import { AccountMenu } from '@/components/layout/AccountMenu';
 
 /**
@@ -15,6 +15,7 @@ export default function MemberLayout({ children }: { children: React.ReactNode }
     { href: '/me/corrections', label: '수정 요청', icon: AlertTriangle },
     { href: '/me/points', label: '포인트', icon: Coins },
     { href: '/me/author-authorization', label: '제작 자격', icon: ShieldCheck },
+    { href: '/me/manual', label: '이용 안내', icon: BookOpen },
   ];
 
   return (

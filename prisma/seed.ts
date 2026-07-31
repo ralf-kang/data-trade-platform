@@ -91,6 +91,9 @@ const FORMS: Array<{
   status: 'OPEN' | 'CLOSED';
   fields: Array<Record<string, unknown>>;
   submissions: Array<{ submissionId: string; submittedAt: string; data: Record<string, unknown> }>;
+  // 기본 데모 양식지는 모두 마스킹 대상(false)이다. 샘플 양식지 쪽에서만 일부를 켜서
+  // 마스킹 비대상 기능을 시연한다(prisma/sampleData.ts 참고).
+  authorHadPrivacyAuth?: boolean;
 }> = [
   {
     id: 'f-101',
@@ -282,6 +285,7 @@ async function main() {
         deployUrl: `/q/${form.id}`,
         lifecycle: 'PUBLISHED',
         publishedAt: new Date(),
+        authorHadPrivacyAuth: form.authorHadPrivacyAuth ?? false,
       },
       create: {
         id: form.id,
@@ -291,6 +295,7 @@ async function main() {
         lifecycle: 'PUBLISHED',
         publishedAt: new Date(),
         submissionCount: form.submissions.length,
+        authorHadPrivacyAuth: form.authorHadPrivacyAuth ?? false,
       },
     });
 

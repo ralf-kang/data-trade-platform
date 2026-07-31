@@ -163,8 +163,8 @@ enum RewardVisibility {
 }
 
 model User {
-  id       String @id @default(cuid())
-  email    String @unique
+  id       String  @id @default(cuid())
+  email    String  @unique
   name     String
   // 로컬 계정의 비밀번호 해시. LDAP 계정은 원격에서 인증하므로 사용하지 않는다.
   password String?
@@ -174,10 +174,10 @@ model User {
   department String?
   position   String?
 
-  status UserStatus @default(ACTIVE)
-  source UserSource @default(LOCAL)
+  status       UserStatus @default(ACTIVE)
+  source       UserSource @default(LOCAL)
   // LDAP 계정의 원본 식별자 — 이름/부서가 바뀌어도 같은 사람임을 추적한다.
-  ldapDn String? @unique
+  ldapDn       String?    @unique
   lastSyncedAt DateTime?
 
   // 대량 추출(CSV) 허용 여부 — 슈퍼관리자가 개인적 유용 등을 우려해 개별 제한할 수 있다.
@@ -193,16 +193,16 @@ model User {
   updatedAt   DateTime  @updatedAt
   lastLoginAt DateTime?
 
-  roles                 UserRole[]
-  respondentTokens      RespondentToken[]
-  campaignTargets       CampaignTarget[]
-  campaignParticipations CampaignParticipation[]
-  pointLedger           PointLedger[]
-  authorAuthorization    AuthorAuthorization?
-  formsOwned            FormRegistry[]      @relation("FormOwner")
-  shareRequestsSent     ShareRequest[]      @relation("ShareRequestFrom")
-  shareRequestsReceived ShareRequest[]      @relation("ShareRequestTo")
-  notifications         AdminNotification[]
+  roles                      UserRole[]
+  respondentTokens           RespondentToken[]
+  campaignTargets            CampaignTarget[]
+  campaignParticipations     CampaignParticipation[]
+  pointLedger                PointLedger[]
+  authorAuthorization        AuthorAuthorization?
+  formsOwned                 FormRegistry[]                @relation("FormOwner")
+  shareRequestsSent          ShareRequest[]                @relation("ShareRequestFrom")
+  shareRequestsReceived      ShareRequest[]                @relation("ShareRequestTo")
+  notifications              AdminNotification[]
   correctionRequestsReceived SubmissionCorrectionRequest[]
 
   @@index([department])
@@ -236,24 +236,24 @@ model UserRole {
 
 // 폼의 "운영" 측면(정형) — 실제 제목/설명/필드 구성(비정형)은 Elasticsearch 문서를 참고.
 model FormRegistry {
-  id              String     @id // 비즈니스 키: "f-101" 등. ES 문서 id와 동일하게 유지.
-  status          FormStatus @default(OPEN)
-  ownerId         String?
-  owner           User?      @relation("FormOwner", fields: [ownerId], references: [id])
+  id                 String        @id // 비즈니스 키: "f-101" 등. ES 문서 id와 동일하게 유지.
+  status             FormStatus    @default(OPEN)
+  ownerId            String?
+  owner              User?         @relation("FormOwner", fields: [ownerId], references: [id])
   // 운영 서버 기본 배포 URL — "/q/{id}" 고정값. 관리자 화면에서 수정/삭제할 수 없도록
   // API 계층(formService)에서 보호하고, 별도 활성화 기간만 이 레코드로 제어한다.
-  deployUrl       String?
+  deployUrl          String?
   // 양식지 활성화 기간(선택) — 설정 시 이 기간 밖에서는 공개 응답 페이지 접근이 거부된다.
-  startsAt        DateTime?
-  expiresAt       DateTime?
+  startsAt           DateTime?
+  expiresAt          DateTime?
   // 설계 단계 — DRAFT인 동안에는 외부 API 쓰기를 거부한다(필드 구성이 계속 바뀌므로).
-  lifecycle       FormLifecycle @default(DRAFT)
+  lifecycle          FormLifecycle @default(DRAFT)
   // 확정(PUBLISHED) 이후 필드 구성을 바꿀 때마다 1씩 올라간다. 외부 연동 측이
   // 계약 변경을 감지하는 기준값이며, API 응답 헤더(X-Form-Schema-Version)로도 노출한다.
-  schemaVersion   Int        @default(1)
-  publishedAt     DateTime?
+  schemaVersion      Int           @default(1)
+  publishedAt        DateTime?
   // 이 양식이 요구하는 응답자 신원 수준. 기본 ANONYMOUS이므로 기존 양식의 동작은 바뀌지 않는다.
-  identityMode    IdentityMode @default(ANONYMOUS)
+  identityMode       IdentityMode  @default(ANONYMOUS)
   // 익명 문항 결과를 공개하기 위한 최소 응답 수(2단계). null이면 시스템 기본값을 따른다.
   anonymityThreshold Int?
 
@@ -261,32 +261,32 @@ model FormRegistry {
   // 제작 시점에 제작자가 개인정보 취급 자격을 갖고 있었는지. 제작 시점에 고정하고
   // 이후 바꾸지 않는다 — 사후에 자격을 얻어도 과거 데이터가 소급 정당화되면
   // "일단 걷고 나중에 자격 따면 된다"가 학습된다.
-  authorHadPrivacyAuth Boolean @default(false)
+  authorHadPrivacyAuth Boolean   @default(false)
   // 예외 해제 — 슈퍼관리자 검토 + 사유 기록을 거친 명시적 승인으로만 값이 채워진다.
-  maskingExemptedBy   String?
-  maskingExemptedAt   DateTime?
-  maskingExemptReason String?
+  maskingExemptedBy    String?
+  maskingExemptedAt    DateTime?
+  maskingExemptReason  String?
 
   // privacy-consent 컴포넌트 포함 여부로 자동 설정된다(자진신고 아님). 개인정보
   // 영향평가·동의서 목록 작성의 기준이 된다.
   collectsPersonalData Boolean @default(false)
   // 조합 위험 경고를 확인하고 진행한 사유 — 감사 시 판단 근거로 남긴다.
-  privacyWarningAck String?
+  privacyWarningAck    String?
 
-  viewCount       Int        @default(0)
-  submissionCount Int        @default(0)
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  viewCount       Int      @default(0)
+  submissionCount Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  shareRequests ShareRequest[]
-  auditLogs     AuditLog[]
-  notifications AdminNotification[]
-  apiKeys       ApiKey[]
-  scopedRoles   UserRole[]
-  respondentTokens RespondentToken[]
-  anonymousBuffer  AnonymousResponseBuffer[]
-  campaigns        Campaign[]
-  schedule         CampaignSchedule?
+  shareRequests      ShareRequest[]
+  auditLogs          AuditLog[]
+  notifications      AdminNotification[]
+  apiKeys            ApiKey[]
+  scopedRoles        UserRole[]
+  respondentTokens   RespondentToken[]
+  anonymousBuffer    AnonymousResponseBuffer[]
+  campaigns          Campaign[]
+  schedule           CampaignSchedule?
   correctionRequests SubmissionCorrectionRequest[]
 
   @@map("form_registry")
@@ -324,7 +324,7 @@ model Campaign {
   // 배포 범위. 부서 배포는 무승인, 전사 배포는 슈퍼관리자 승인이 필요하다(기본값).
   // 여러 부서가 동시에 전사 발송을 남발하면 임직원 피로도로 전체 응답률이 무너지므로,
   // 파급력이 큰 범위만 승인 절차를 둔다.
-  distributionScope String @default("DEPARTMENT") // "DEPARTMENT" | "COMPANY_WIDE"
+  distributionScope String               @default("DEPARTMENT") // "DEPARTMENT" | "COMPANY_WIDE"
   approvalRequest   FormApprovalRequest?
 
   createdAt DateTime @default(now())
@@ -343,14 +343,14 @@ model Campaign {
 // 전사 배포 승인 요청. 회차가 COMPANY_WIDE로 대상자를 지정하려 할 때 생성되며,
 // 승인 전에는 대상자 지정(링크 발급)이 진행되지 않는다.
 model FormApprovalRequest {
-  id         String             @id @default(cuid())
-  campaignId String             @unique
-  campaign   Campaign           @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  campaignId String   @unique
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
-  status       FormApprovalStatus @default(PENDING)
-  requestedBy  String // 신청한 관리자 email
-  requestedAt  DateTime           @default(now())
-  reason       String // 전사 배포가 필요한 이유
+  status      FormApprovalStatus @default(PENDING)
+  requestedBy String // 신청한 관리자 email
+  requestedAt DateTime           @default(now())
+  reason      String // 전사 배포가 필요한 이유
 
   reviewedBy String?
   reviewedAt DateTime?
@@ -425,7 +425,7 @@ enum CorrectionRequestStatus {
 }
 
 model SubmissionCorrectionRequest {
-  id           String @id @default(cuid())
+  id           String       @id @default(cuid())
   formId       String
   form         FormRegistry @relation(fields: [formId], references: [id], onDelete: Cascade)
   campaignId   String?
@@ -433,7 +433,7 @@ model SubmissionCorrectionRequest {
   fieldId      String? // null = 특정 문항이 아니라 응답 전체에 대한 요청
   /// 식별 응답인 경우에만 채워진다 — 익명 응답은 정정 요청 대상이 될 수 없다(응답자를 특정할 수 없음).
   respondentId String?
-  respondent   User? @relation(fields: [respondentId], references: [id])
+  respondent   User?        @relation(fields: [respondentId], references: [id])
 
   issueType CorrectionRequestIssueType
   reason    String // 관리자가 남기는 구체적 사유
@@ -459,15 +459,15 @@ model CampaignSchedule {
   enabled   Boolean             @default(true)
   frequency RecurrenceFrequency
 
-  startDayOfPeriod Int   @default(1) // 주기 시작 후 며칠째에 회차를 열지
-  durationDays     Int   @default(14) // 회차가 열려 있는 기간
+  startDayOfPeriod   Int   @default(1) // 주기 시작 후 며칠째에 회차를 열지
+  durationDays       Int   @default(14) // 회차가 열려 있는 기간
   reminderDaysBefore Int[] @default([7, 1]) // 마감 며칠 전에 미응답자 리마인드
 
   // 회차는 시작 시각이 아니라 그 전에 미리 만든다 — 시작 시각에 만들면 스케줄러가
   // 잠깐 죽었을 때 회차가 통째로 누락된다.
-  nextRunAt DateTime?
-  lastRunAt DateTime?
-  nameTemplate String @default("{year} {quarter} 정기조사")
+  nextRunAt    DateTime?
+  lastRunAt    DateTime?
+  nameTemplate String    @default("{year} {quarter} 정기조사")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -519,19 +519,19 @@ model PointLedger {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   /// 부호 있는 증감. 이 값은 어떤 경우에도 수정하지 않는다.
-  delta  Int
-  reason String
-  status PointStatus @default(PENDING)
+  delta        Int
+  reason       String
+  status       PointStatus @default(PENDING)
   /// 미지급/취소 사유 — 응답자에게는 범주 수준으로만 안내한다.
   statusReason String?
 
   /// 적립 근거가 된 회차(있는 경우).
-  campaignId String?
+  campaignId     String?
   /// 응답 시점에 약속된 보상 규칙의 스냅샷. 정책이 나중에 바뀌어도
   /// "응답할 때 10P라고 했으니 10P를 준다"를 증명할 수 있어야 한다.
   policySnapshot Json?
 
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
   /// 상태 전이 시각. delta는 불변이지만 상태는 정산 과정에서 진행된다.
   settledAt DateTime?
 
@@ -548,8 +548,8 @@ model CampaignParticipation {
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   submissionId String // ES 식별 문서의 submissionId
-  submittedAt  DateTime @default(now())
-  revision     Int      @default(0) // 최초 제출이 0, 수정할 때마다 증가
+  submittedAt  DateTime  @default(now())
+  revision     Int       @default(0) // 최초 제출이 0, 수정할 때마다 증가
   lastEditedAt DateTime?
 
   // 기한 내 응답 여부 — 조기 응답 보상(7단계)과 적시성 지표의 근거.
@@ -573,10 +573,10 @@ model RespondentToken {
   tokenHash   String @unique // SHA-256(원문)
   tokenPrefix String // 접두 12자 — 목록 식별용
 
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  formId String
-  form   FormRegistry @relation(fields: [formId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  formId     String
+  form       FormRegistry @relation(fields: [formId], references: [id], onDelete: Cascade)
   // 어느 회차의 응답 요청인지. 링크로 들어오면 이 회차로 제출이 귀속된다.
   campaignId String?
 
@@ -608,19 +608,19 @@ model RespondentToken {
 // payload는 암호화해 둔다 — 버퍼에 머무는 짧은 시간에도 DB를 직접 들여다보는 것만으로는
 // 내용을 읽을 수 없어야 한다.
 model AnonymousResponseBuffer {
-  id     String       @id @default(cuid())
-  formId String
-  form   FormRegistry @relation(fields: [formId], references: [id], onDelete: Cascade)
+  id         String       @id @default(cuid())
+  formId     String
+  form       FormRegistry @relation(fields: [formId], references: [id], onDelete: Cascade)
   // 회차별로 버퍼와 임계값이 분리되어야 한다 — Q1 3건과 Q2 3건을 6건으로 세어
   // 임계값을 채우면 각 회차는 여전히 소수 응답인데 공개되어 버린다.
   campaignId String?
-  campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaign   Campaign?    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   // AES-256-GCM 암호문 (src/lib/crypto.ts)
   payloadEncrypted String
   // 절삭된 제출 시각(기본 1시간 단위). 정확한 시각은 저장하지 않는다.
-  bucketAt      DateTime
-  schemaVersion Int
+  bucketAt         DateTime
+  schemaVersion    Int
 
   createdAt DateTime @default(now())
 
@@ -634,21 +634,21 @@ model AnonymousResponseBuffer {
 // 원문 키는 저장하지 않는다(생성 시 1회만 화면에 노출). 대신 SHA-256 해시만 보관하고,
 // 목록 화면에서 어떤 키인지 식별할 수 있도록 접두 8자(prefix)만 평문으로 남긴다.
 model ApiKey {
-  id          String       @id @default(cuid())
-  formId      String
-  form        FormRegistry @relation(fields: [formId], references: [id], onDelete: Cascade)
-  name        String // 사람이 알아볼 용도 ("외부 파트너사 A 연동" 등)
-  keyPrefix   String // 평문 접두 8자 — 목록에서 키 식별용
-  keyHash     String       @unique // SHA-256(원문키)
-  scope       ApiScope     @default(READ)
+  id              String       @id @default(cuid())
+  formId          String
+  form            FormRegistry @relation(fields: [formId], references: [id], onDelete: Cascade)
+  name            String // 사람이 알아볼 용도 ("외부 파트너사 A 연동" 등)
+  keyPrefix       String // 평문 접두 8자 — 목록에서 키 식별용
+  keyHash         String       @unique // SHA-256(원문키)
+  scope           ApiScope     @default(READ)
   // 분당 허용 요청 수 — 대량 추출 남용을 막기 위한 키 단위 상한.
-  rateLimitPerMin Int      @default(60)
-  expiresAt   DateTime?
-  revokedAt   DateTime?
-  lastUsedAt  DateTime?
-  useCount    Int          @default(0)
-  createdBy   String // 발급한 관리자 이메일
-  createdAt   DateTime     @default(now())
+  rateLimitPerMin Int          @default(60)
+  expiresAt       DateTime?
+  revokedAt       DateTime?
+  lastUsedAt      DateTime?
+  useCount        Int          @default(0)
+  createdBy       String // 발급한 관리자 이메일
+  createdAt       DateTime     @default(now())
 
   @@index([formId])
   @@map("api_keys")
@@ -690,13 +690,13 @@ model AdminNotification {
 // 시스템 전역 설정(싱글턴) — 예: QR/URL 생성에 쓰이는 공개 기본 도메인.
 // 슈퍼관리자 시스템 환경 설정(/super-admin/settings) 화면에서만 수정 가능.
 model SystemConfig {
-  id            String   @id @default("default")
+  id                        String  @id @default("default")
   // QR 코드 / 배포 URL 안내에 사용할 운영 서버의 공개 기본 URL (예: https://forms.company.com).
   // 미설정 시 요청 Origin으로 대체한다.
-  publicBaseUrl String?
+  publicBaseUrl             String?
   // 익명 응답 결과를 공개하기 위한 최소 응답 수(2단계). 양식별로 override 가능.
   // 이보다 적으면 소수 응답의 조합으로 개인이 특정될 수 있으므로 조회를 막는다.
-  defaultAnonymityThreshold Int @default(5)
+  defaultAnonymityThreshold Int     @default(5)
 
   /// 마이페이지 포인트 화면의 노출 범위. 보상 제도가 준비 중인 동안은 ADMIN_ONLY로
   /// 두어, 일반 임직원에게는 감추고 관리자만 "개발 중" 상태로 확인할 수 있게 한다.
@@ -707,7 +707,7 @@ model SystemConfig {
   /// 기본값은 조정 가능하며, 대상자 지정(upsertTargets) 시점에 이 값을 기준으로 검사한다.
   maxWeeklyInvitesPerUser Int @default(3)
 
-  updatedAt     DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 
   @@map("system_config")
 }
@@ -736,8 +736,8 @@ model AuthorAuthorization {
   trainingValidUntil  DateTime? // 교육 유효기간 — 경과 시 SUSPENDED (기본 12개월)
   reauthorizeBy       DateTime? // 재승인 주기 — 경과 시 EXPIRED (기본 24개월)
 
-  reviewedBy String? // 승인/거부/해제 처리자 email
-  reviewedAt DateTime?
+  reviewedBy    String? // 승인/거부/해제 처리자 email
+  reviewedAt    DateTime?
   // 해제(REVOKED) 사유 — 퇴사·직무변경·위반 등. 감사 근거로 남긴다.
   revokedReason String?
 
@@ -791,14 +791,14 @@ model LdapConfig {
 
   // ── 동기화 정책 ──
   // 동기화로 새로 만들어진 계정에 기본 부여할 역할.
-  defaultRole RoleType @default(MEMBER)
+  defaultRole       RoleType @default(MEMBER)
   // LDAP 검색 결과에서 사라진 계정 처리 — 삭제하지 않고 LEFT로 전환한다.
   // 과거 응답·소유 이력을 보존해야 하기 때문(감사/데이터베이스제작자 권리).
-  deactivateMissing Boolean @default(true)
+  deactivateMissing Boolean  @default(true)
 
-  lastSyncAt      DateTime?
-  lastSyncResult  String? // 마지막 동기화 요약 (JSON 문자열)
-  updatedAt       DateTime @updatedAt
+  lastSyncAt     DateTime?
+  lastSyncResult String? // 마지막 동기화 요약 (JSON 문자열)
+  updatedAt      DateTime  @updatedAt
 
   @@map("ldap_config")
 }
@@ -859,4 +859,40 @@ model DatabaseUpdateLog {
 
   @@index([registrationId])
   @@map("database_update_logs")
+}
+
+// ---------------------------------------------------------------------------
+// 외부 연결 목록 (docs/주소입력-지도분포-설계.md §3)
+// ---------------------------------------------------------------------------
+// 이 플랫폼이 외부로 나가는 모든 목적지의 단일 목록. 목적지를 코드에 하드코딩하면
+// ① 환경마다 빌드를 다시 해야 하고 ② 설정 화면에 표시되는 값과 실제 호출 대상이
+// 어긋날 수 있다. "화면에 보이는 값이 곧 실제 호출 대상"이어야 방화벽 허용 목록의
+// 근거로 쓸 수 있으므로 DB에 둔다.
+enum EndpointMode {
+  BUILTIN // 내장(로컬) — 외부로 나가지 않는다
+  EXTERNAL // 외부 서비스 호출
+  DISABLED // 사용 안 함
+}
+
+model ExternalEndpointConfig {
+  id            String       @id // "address-search" | "geocoding" | "map-tiles" ...
+  label         String
+  mode          EndpointMode @default(DISABLED)
+  // mode=EXTERNAL일 때의 실제 목적지. 방화벽 허용 목록의 근거가 되는 값이다.
+  scheme        String? // https | http
+  host          String? // 호스트명 또는 IP
+  port          Int?
+  // 타일 URL 템플릿({z}/{x}/{y}) 등 용도별 부가 경로/템플릿
+  pathTemplate  String?
+  // 키가 필요한 서비스의 발급 키. 평문 노출 금지 — 응답 시 마스킹해서 내려보낸다.
+  apiKey        String?
+  // mode=BUILTIN일 때 — 내장 데이터의 기준일. 오프라인 갱신 체계에서는 갱신을 잊으면
+  // "신규 항목이 검색되지 않음"으로 조용히 고장 나므로 기준일을 반드시 노출한다.
+  dataAsOf      DateTime?
+  lastCheckedAt DateTime?
+  lastCheckOk   Boolean?
+  note          String?
+  updatedAt     DateTime     @updatedAt
+
+  @@map("external_endpoint_config")
 }

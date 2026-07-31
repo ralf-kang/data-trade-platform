@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Cloud, Info, ShieldCheck, Unlock } from 'lucide-react';
 import { WordCloud } from '@isoterik/react-word-cloud';
+import HelpLink from '@/components/manual/HelpLink';
 
 interface FormScopeOption {
   formId: string;
@@ -102,10 +103,13 @@ export default function WordCloudPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <div className="bg-white border-b border-gray-200 px-8 py-4 sticky top-0 z-10">
-        <h1 className="text-xl font-bold text-gray-900 flex items-center">
-          <Cloud className="w-5 h-5 mr-2 text-indigo-600" />
-          워드클라우드
-        </h1>
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="text-xl font-bold text-gray-900 flex items-center">
+            <Cloud className="w-5 h-5 mr-2 text-indigo-600" />
+            워드클라우드
+          </h1>
+          <HelpLink />
+        </div>
         <p className="text-sm text-gray-500 mt-1">
           내가 제작한 양식지의 자유서술형 응답에서 자주 등장한 단어를 보여줍니다.
         </p>

@@ -973,9 +973,45 @@ function FieldDetailPanel({
       )}
 
       {field.type === 'map-address' && (
-        <div className="p-3 bg-green-50 border border-green-200 rounded text-sm text-green-800 flex items-start space-x-2">
-          <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" />
-          <span>입력된 주소를 기반으로 지도 핀이 자동으로 표시되는 복합 컴포넌트입니다.</span>
+        <div className="space-y-3 p-3 bg-green-50 border border-green-200 rounded">
+          <label className="text-sm font-medium text-gray-700 flex items-center space-x-2">
+            <MapPin className="w-4 h-4 text-green-600" />
+            <span>주소 검색 설정</span>
+          </label>
+          <p className="text-[11px] text-gray-600 leading-relaxed">
+            응답자가 검색으로 주소를 선택하면 우편번호·도로명·법정동코드가 자동으로 채워지고 읽기
+            전용이 됩니다. 상세주소만 직접 입력합니다.
+          </p>
+
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={!!field.addressOptions?.requireDetail}
+              onChange={(e) =>
+                onChange({ addressOptions: { ...field.addressOptions, requireDetail: e.target.checked } })
+              }
+            />
+            <span className="text-xs text-gray-700">상세주소(동/호수)를 필수로 입력받기</span>
+          </label>
+
+          <label className="flex items-start gap-2 cursor-pointer pt-2 border-t border-green-200">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={!!field.addressOptions?.mapEnabled}
+              onChange={(e) =>
+                onChange({ addressOptions: { ...field.addressOptions, mapEnabled: e.target.checked } })
+              }
+            />
+            <span className="text-xs text-gray-700">
+              <strong>지도 분포 분석 대상으로 사용</strong>
+              <span className="block text-[11px] text-gray-500 mt-0.5">
+                켜면 관리자 화면에서 이 문항의 주소 분포를 지도로 볼 수 있습니다. 개인이 특정되지
+                않도록 최소 응답 수 미만인 지역은 표시되지 않습니다. 기본값은 꺼짐입니다.
+              </span>
+            </span>
+          </label>
         </div>
       )}
 

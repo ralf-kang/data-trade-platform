@@ -4,6 +4,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Lock, UserCheck, History, AlertTriangle, ShieldCheck } from 'lucide-react';
 import type { FormListItem } from '@/lib/apiTypes';
 import { buildConsentText } from '@/lib/privacyConsentText';
+import AddressField from '@/components/form/AddressField';
+import { coerceAddressValue } from '@/lib/addressValue';
 
 interface PrefillEntry {
   value: unknown;
@@ -324,6 +326,15 @@ export default function PublicFormViewer({ formId, identified, respondentName }:
                     <span className="text-sm text-gray-700">위 내용에 동의합니다</span>
                   </label>
                 </div>
+              ) : field.type === 'map-address' ? (
+                <AddressField
+                  key={field.id}
+                  fieldId={field.id}
+                  label={field.label}
+                  required={field.required}
+                  requireDetail={field.addressOptions?.requireDetail}
+                  defaultValue={coerceAddressValue(prefill.values[field.id]?.value)}
+                />
               ) : field.type === 'text' ? (
                 <TextFieldWithSuggestions
                   key={`${field.id}-${prefillValue(field.id) ?? ''}`}

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Settings, Mail, Key, Save, CheckCircle2, Globe, QrCode, Coins } from 'lucide-react';
 import Link from 'next/link';
 import LdapSettings from '@/components/settings/LdapSettings';
+import ExternalEndpointSettings from '@/components/settings/ExternalEndpointSettings';
 
 export default function SuperAdminSettingsPage() {
   const [isSaved, setIsSaved] = useState(false);
@@ -171,6 +172,9 @@ export default function SuperAdminSettingsPage() {
         {/* LDAP / AD 연동 — 임직원 계정의 출처가 되므로 다른 설정보다 앞에 둔다 */}
         <div className="mb-8">
           <LdapSettings />
+
+          {/* 외부 연결 목록 — 이 시스템이 밖으로 나가는 모든 목적지(방화벽 허용 목록 근거) */}
+          <ExternalEndpointSettings />
         </div>
 
         <form onSubmit={handleSave} className="space-y-8">

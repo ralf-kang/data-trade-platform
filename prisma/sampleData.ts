@@ -39,6 +39,32 @@ function randomName(): string {
 
 const DEPARTMENTS = ['개발1팀', '개발2팀', '디자인팀', '마케팅팀', '영업팀', '총무팀', '인사팀', '기획팀', '품질보증팀', '생산관리팀'] as const;
 
+// 지도 분포(주소 문항) 검증용 샘플 주소. 법정동코드 앞 2자리가 시·도를 결정하므로
+// 시·도별 건수 차이가 나도록 가중치를 준 목록에서 뽑는다.
+const SAMPLE_ADDRESSES: Array<{ postcode: string; roadAddress: string; bcode: string; sido: string; sigungu: string; bname: string }> = [
+  { postcode: '06236', roadAddress: '서울특별시 강남구 테헤란로 152', bcode: '1168010100', sido: '서울특별시', sigungu: '강남구', bname: '역삼동' },
+  { postcode: '04524', roadAddress: '서울특별시 중구 세종대로 110', bcode: '1114010300', sido: '서울특별시', sigungu: '중구', bname: '태평로1가' },
+  { postcode: '07327', roadAddress: '서울특별시 영등포구 여의대로 108', bcode: '1156011000', sido: '서울특별시', sigungu: '영등포구', bname: '여의도동' },
+  { postcode: '13529', roadAddress: '경기도 성남시 분당구 판교역로 235', bcode: '4113510900', sido: '경기도', sigungu: '성남시 분당구', bname: '삼평동' },
+  { postcode: '16226', roadAddress: '경기도 수원시 영통구 광교로 145', bcode: '4111710500', sido: '경기도', sigungu: '수원시 영통구', bname: '이의동' },
+  { postcode: '10390', roadAddress: '경기도 고양시 일산동구 중앙로 1275', bcode: '4128510300', sido: '경기도', sigungu: '고양시 일산동구', bname: '장항동' },
+  { postcode: '21999', roadAddress: '인천광역시 연수구 송도과학로 32', bcode: '2818510500', sido: '인천광역시', sigungu: '연수구', bname: '송도동' },
+  { postcode: '48058', roadAddress: '부산광역시 해운대구 센텀중앙로 97', bcode: '2635010800', sido: '부산광역시', sigungu: '해운대구', bname: '우동' },
+  { postcode: '34126', roadAddress: '대전광역시 유성구 대덕대로 1227', bcode: '3020011000', sido: '대전광역시', sigungu: '유성구', bname: '도룡동' },
+  { postcode: '41068', roadAddress: '대구광역시 동구 첨단로 39', bcode: '2714012300', sido: '대구광역시', sigungu: '동구', bname: '신서동' },
+  { postcode: '61186', roadAddress: '광주광역시 북구 첨단과기로 123', bcode: '2917013300', sido: '광주광역시', sigungu: '북구', bname: '오룡동' },
+  { postcode: '44776', roadAddress: '울산광역시 남구 중앙로 201', bcode: '3114012400', sido: '울산광역시', sigungu: '남구', bname: '신정동' },
+  { postcode: '28116', roadAddress: '충청북도 청주시 청원구 대성로 298', bcode: '4311412400', sido: '충청북도', sigungu: '청주시 청원구', bname: '내덕동' },
+  { postcode: '63309', roadAddress: '제주특별자치도 제주시 문연로 6', bcode: '5011012700', sido: '제주특별자치도', sigungu: '제주시', bname: '연동' },
+];
+
+function randomAddress() {
+  // 수도권 비중을 높여 실제 분포에 가깝게 만든다(앞쪽 6개가 서울·경기).
+  const idx = Math.random() < 0.55 ? randomInt(0, 5) : randomInt(0, SAMPLE_ADDRESSES.length - 1);
+  const a = SAMPLE_ADDRESSES[idx];
+  return { ...a, detail: `${randomInt(1, 20)}층 ${randomInt(1, 40)}호` };
+}
+
 function randomPhone(): string {
   return `010-${randomInt(1000, 9999)}-${randomInt(1000, 9999)}`;
 }
@@ -110,6 +136,14 @@ export interface SampleForm {
   status: 'OPEN' | 'CLOSED';
   fields: Array<Record<string, unknown>>;
   submissions: SubmissionSpec[];
+  /**
+   * 제작 시점에 제작자가 개인정보 취급 자격을 갖고 있었는지(마스킹 계층의 기준값).
+   * 기본은 false라 모든 샘플 양식지가 마스킹 대상이 되는데, 그러면 마스킹을 전제로
+   * 하는 기능(워드클라우드·주소 분포 등)을 샘플 데이터만으로는 시연할 수 없다.
+   * f-301/f-318이 온톨로지 시연을 위해 사번을 공유하는 것과 같은 취지로,
+   * 일부 양식지에만 true를 주어 해당 기능을 바로 확인할 수 있게 한다.
+   */
+  authorHadPrivacyAuth?: boolean;
 }
 
 const OWNER = 'ralfkang@ktl.re.kr';
@@ -553,6 +587,8 @@ export const SAMPLE_FORMS: SampleForm[] = [
     description: '2026년 하반기 공개채용 지원서입니다.',
     ownerEmail: OWNER,
     status: 'OPEN',
+    // 주소 분포(지도) 기능을 샘플 데이터만으로 바로 시연하기 위해 마스킹 비대상으로 둔다.
+    authorHadPrivacyAuth: true,
     fields: [
       { id: 'f319-1', type: 'text', label: '지원자명', required: true, nullable: false, width: '50%' },
       { id: 'f319-2', type: 'regex-input', label: '이메일', required: true, nullable: false, regexPattern: '^[\\w.-]+@[\\w.-]+\\.[a-zA-Z]{2,}$', width: '50%' },
@@ -560,6 +596,7 @@ export const SAMPLE_FORMS: SampleForm[] = [
       { id: 'f319-4', type: 'select', label: '지원 직무', required: true, nullable: false, width: '50%', options: ['백엔드 개발', '프론트엔드 개발', 'UX/UI 디자인', '마케팅', '영업'] },
       { id: 'f319-5', type: 'date', label: '입사 가능일', required: false, nullable: true, width: '50%' },
       { id: 'f319-6', type: 'file', label: '이력서 첨부', required: true, nullable: false, width: '100%' },
+      { id: 'f319-7', type: 'map-address', label: '거주지 주소', required: true, nullable: false, width: '100%', addressOptions: { requireDetail: false, mapEnabled: true } },
     ],
     submissions: buildSubmissions('319', randomInt(25, 45), {
       'f319-1': () => randomName(),
@@ -568,6 +605,7 @@ export const SAMPLE_FORMS: SampleForm[] = [
       'f319-4': () => pick(['백엔드 개발', '프론트엔드 개발', 'UX/UI 디자인', '마케팅', '영업']),
       'f319-5': () => maybeBlank(randomDateOnly(60, -10)),
       'f319-6': () => 'resume.pdf',
+      'f319-7': () => randomAddress(),
     }),
   },
   // -------------------------------------------------------------------------

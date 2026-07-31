@@ -16,7 +16,8 @@ import {
   UserCog,
   Network,
   Cloud,
-  Link2
+  Link2,
+  BookOpen
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { AccountMenu } from './AccountMenu';
@@ -35,6 +36,7 @@ export function AdminSidebar({ role = 'admin' }: AdminSidebarProps) {
     { name: '제출 데이터 조회', href: '/admin/data', icon: Database },
     { name: '워드클라우드', href: '/admin/wordcloud', icon: Cloud },
     { name: '공유 신청 및 승인함', href: '/admin/share-requests', icon: Users },
+    { name: '사용 매뉴얼', href: '/admin/manual', icon: BookOpen },
   ];
 
   const superAdminMenus = [

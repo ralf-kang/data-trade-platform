@@ -46,6 +46,15 @@ export interface FormField {
    */
   ldapAttribute?: 'employeeNo' | 'department' | 'position' | 'name' | 'email';
   /**
+   * map-address(주소 및 지도) 전용 (docs/주소입력-지도분포-설계.md §6).
+   * `mapEnabled`는 기본 false다 — 주소를 수집했다고 해서 자동으로 지도 분포 화면에
+   * 올라가면, 제작자가 의도하지 않은 데이터 노출 경로가 조용히 생기기 때문이다.
+   */
+  addressOptions?: {
+    requireDetail?: boolean;
+    mapEnabled?: boolean;
+  };
+  /**
    * privacy-consent(개인정보 동의서) 전용 — 「개인정보 보호법」이 요구하는 법정 필수
    * 고지사항(수집 목적/항목/보유기간, 필요 시 제3자 제공)을 구조화해서 담는다.
    * 응답 화면에 보여줄 문구는 이 값으로부터 자동 생성한다(src/lib/privacyConsentText.ts)

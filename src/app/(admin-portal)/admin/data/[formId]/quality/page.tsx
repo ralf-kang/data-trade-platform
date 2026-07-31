@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, AlertTriangle, TrendingDown, TrendingUp, Send, CheckCircle2, BarChart3, Info, Tags } from 'lucide-react';
+import HelpLink from '@/components/manual/HelpLink';
 
 interface MissingFieldStat {
   fieldId: string;
@@ -131,6 +132,7 @@ export default function DataQualityPage() {
             문항·응답은 대상에서 제외됩니다.
           </p>
         </div>
+        <div className="ml-auto"><HelpLink /></div>
       </div>
 
       <div className="flex-1 p-8">
