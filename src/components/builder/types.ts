@@ -23,6 +23,7 @@ export interface FormField {
   width?: '100%' | '50%'; // 레이아웃 조절용 (전체 너비 vs 절반 너비)
   options?: string[]; // for select, radio, checkbox
   regexPattern?: string; // 전화번호, 주민번호, 사업자번호 등 검증용
+  fillableBy?: 'guest' | 'admin' | 'all'; // 작성 주체 (guest: 방문자/응답자, admin: 관리자/검토자 추가 기입)
   privacyMasking?: boolean; // 비식별화 (마스킹) 플래그
   /**
    * 이 문항의 응답을 응답자와 분리해 익명 저장한다(2단계).

@@ -534,6 +534,11 @@ export default function FormBuilder() {
                         {fieldTypeInfo?.icon}
                         <span className="text-xs font-bold">{fieldTypeInfo?.label ?? field.type}</span>
                         <span className="text-[10px] text-slate-400 font-mono">({field.type})</span>
+                        {field.fillableBy === 'admin' && (
+                          <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                            관리자/검토자 전용
+                          </span>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-3">
@@ -920,6 +925,22 @@ function FieldDetailPanel({
           className="w-full p-2 border rounded text-sm"
           placeholder="응답자에게 보여줄 부가 설명"
         />
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">작성 주체 (입력 시점)</label>
+        <select
+          className="w-full p-2 border rounded text-sm bg-white"
+          value={field.fillableBy ?? 'guest'}
+          onChange={(e) => onChange({ fillableBy: e.target.value as FormField['fillableBy'] })}
+        >
+          <option value="guest">방문자/응답자 (Guest - 최초 제출)</option>
+          <option value="admin">관리자/검토자 (Admin - 승인/추가 기입 & 서명)</option>
+          <option value="all">공통 (All - 누구나 입력 가능)</option>
+        </select>
+        <p className="text-[11px] text-gray-500 mt-1">
+          '관리자/검토자' 항목은 방문객 최초 제출 시에는 노출되지 않고, 제출 후 관리자가 확인/승인 단계에서 서명 및 추가 정보를 기록하는 용도로 사용됩니다.
+        </p>
       </div>
 
       <div>
