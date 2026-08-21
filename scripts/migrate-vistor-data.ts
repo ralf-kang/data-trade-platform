@@ -3,7 +3,7 @@
  * 
  * 실행: npx tsx scripts/migrate-vistor-data.ts
  */
-import { PrismaClient } from '../src/generated/prisma/client.ts';
+import { PrismaClient } from '../src/generated/prisma/index.js';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Client as ElasticClient } from '@elastic/elasticsearch';
 import pg from 'pg';
