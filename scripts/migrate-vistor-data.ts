@@ -56,7 +56,9 @@ async function main() {
         label: f.label,
         required: f.required,
         fillableBy: f.fillable_by || 'guest',
-        options: f.options,
+        options: Array.isArray(f.options)
+          ? f.options.map((opt: any) => typeof opt === 'object' ? (opt.label || opt.value || JSON.stringify(opt)) : String(opt))
+          : undefined,
       }));
 
       // Web1 FormRegistry 생성/업데이트
