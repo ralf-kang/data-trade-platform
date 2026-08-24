@@ -162,6 +162,36 @@ export default function FormBuilder() {
     setFields([...fields, ...block]);
   };
 
+  const loadServerRoomAccessPreset = () => {
+    if (fields.length > 0 && !confirm('현재 캔버스의 내용이 "서버실 출입통제 관리대장" 템플릿으로 교체됩니다. 진행하시겠습니까?')) {
+      return;
+    }
+    const presetFields: FormField[] = [
+      { id: 'visit_date', type: 'date', label: '년월일', required: true, nullable: false, fillableBy: 'guest', width: '50%' },
+      { id: 'entry_time', type: 'text', label: '출입시간', required: true, nullable: false, fillableBy: 'guest', width: '50%' },
+      { id: 'work_category', type: 'select', label: '작업구분', required: true, nullable: false, fillableBy: 'guest', width: '50%', options: ['시스템 정기점검', '시스템 장애 처리', '시스템 육안확인', '장비 설치 및 해제', '일시적 작업(PoC, Test 포함)', '기타'] },
+      { id: 'exit_time', type: 'text', label: '퇴청시간', required: false, nullable: true, fillableBy: 'guest', width: '50%' },
+      { id: 'location_console_room', type: 'checkbox', label: '콘솔실', required: false, nullable: true, fillableBy: 'guest', width: '50%', options: ['콘솔실 출입'] },
+      { id: 'location_server_room', type: 'checkbox', label: '서버실', required: false, nullable: true, fillableBy: 'guest', width: '50%', options: ['서버실 출입'] },
+      { id: 'visitor_phone', type: 'regex-input', label: '휴대폰 전화번호', required: true, nullable: false, fillableBy: 'guest', regexPattern: '^01(?:0|1|[6-9])-(?:\\d{3}|\\d{4})-\\d{4}$', width: '50%' },
+      { id: 'visitor_org', type: 'text', label: '출입자 소속', required: true, nullable: false, fillableBy: 'guest', width: '50%' },
+      { id: 'visitor_rank', type: 'text', label: '출입자 직급', required: true, nullable: false, fillableBy: 'guest', width: '50%' },
+      { id: 'visitor_name', type: 'text', label: '출입자 성명', required: true, nullable: false, fillableBy: 'guest', width: '50%' },
+      { id: 'visit_purpose', type: 'textarea', label: '출입사유', required: false, nullable: true, fillableBy: 'guest', width: '100%' },
+      { id: 'escort', type: 'select', label: '입회자', required: true, nullable: false, fillableBy: 'guest', width: '50%', options: ['매니저 김수영', '매니저 조형일', '매니저 백승호', '매니저 문종태', 'PL 노성규', 'PL 이덕천', '선임연구원 강정묵', '연구원 이승희', '연구원 송원섭'] },
+      { id: 'escort_signature', type: 'signature', label: '입회자 서명', required: true, nullable: false, fillableBy: 'guest', width: '100%' },
+      { id: 'admin_confirm_signature', type: 'signature', label: '관리책임자 확인(서명)', required: true, nullable: false, fillableBy: 'admin', width: '100%' },
+    ];
+    setTemplate((prev) => ({
+      ...prev,
+      id: prev.id || 'server-room-access',
+      title: '서버실 출입통제 관리대장',
+      description: '서버실/전산실 출입 방문객 기록 및 관리책임자 승인 대장 (웹2 무인증 방문객 + 관리자 서명 호환)',
+      fields: presetFields,
+    }));
+    setActiveFieldId(null);
+  };
+
   const toggleSelection = (id: string, multi: boolean) => {
     const newSet = new Set(multi ? selectedFields : []);
     if (newSet.has(id)) {
@@ -366,14 +396,21 @@ export default function FormBuilder() {
             );
           })}
         </div>
-        <div className="p-4 bg-gray-50 border-t border-gray-200">
-          <h3 className="font-semibold text-gray-700 text-sm mb-3">즐겨찾기 블록 / 추천</h3>
+        <div className="p-4 bg-gray-50 border-t border-gray-200 space-y-2">
+          <h3 className="font-semibold text-gray-700 text-sm mb-2">즐겨찾기 블록 / 추천</h3>
           <button
             onClick={addFavoriteBlock}
-            className="w-full flex items-center justify-center space-x-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 p-3 rounded-lg transition-colors"
+            className="w-full flex items-center justify-center space-x-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 p-2.5 rounded-lg transition-colors text-xs"
           >
             <Star className="w-4 h-4" />
-            <span className="font-medium text-sm">인적사항 세트 (이름+연락처+주소) 추가</span>
+            <span className="font-medium">인적사항 세트 (이름+연락처+주소)</span>
+          </button>
+          <button
+            onClick={loadServerRoomAccessPreset}
+            className="w-full flex items-center justify-center space-x-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 p-2.5 rounded-lg transition-colors text-xs"
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span className="font-medium">서버실 출입통제 관리대장 로드</span>
           </button>
         </div>
       </div>
