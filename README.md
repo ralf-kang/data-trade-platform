@@ -235,6 +235,18 @@ curl -X POST -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/j
   -d '{"mode":"lenient","rows":[{"externalId":"ERP-001","data":{"f101-1":"홍길동","f101-2":"010-1234-5678"}}]}'
 ```
 
+### 외부 연동 API (external) — 인증 없는 공개 양식지 조회
+`src/app/api/external/forms/route.ts`에 별도로 존재하는 **미인증(No-Auth) 공개 API**입니다. 위 v1 API(양식지별 API 키·`Authorization` 헤더 필요)와는 별개의 경로이며, 실제 외부 소비 사례가 있는 연동입니다.
+
+```
+GET  /api/external/forms            # OPEN 상태이고 active한 양식지 템플릿 목록
+GET  /api/external/forms?id={id}    # 특정 양식지의 필드 구성(fields, fillableBy 등) 조회
+```
+
+- 인증 없음, 요청 빈도 제한 없음, 모든 오리진 허용(`Access-Control-Allow-Origin: *`) — 코드 주석에 "외부 연동 서비스(웹2 서버실 출입통제 웹서비스 등)용 공개 API"로 명시되어 있음.
+- v1 API와 달리 제출 데이터(submissions) 조회·입력 기능은 없고, 양식지 템플릿(구조) 조회 전용.
+- 위 "🔐 권한 체계"·"⚖️ 데이터베이스제작자 권리 보호" 절의 인증·레이트리밋 보호는 이 엔드포인트에는 적용되지 않으므로, 슈퍼관리자 설정의 「외부 연결」 허용 목록·방화벽 정책 검토 시 별도로 고려해야 함.
+
 ---
 
 ## ⚖️ 데이터베이스제작자 권리 보호 (저작권법 제4장)
