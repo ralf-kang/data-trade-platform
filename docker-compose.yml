@@ -89,6 +89,14 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+    # 웹서비스 로그 NAS 영구보존(.20 전용, kang-util WEBSVC-LOGS.md / CLAUDE.md §13).
+    # NAS는 CIFS forceuid=1000,forcegid=1000,dir_mode=0750 마운트라 uid 1000만 쓸 수 있다.
+    # 이 이미지의 기본 실행 사용자는 uid 1001(nextjs)이므로 uid/gid 1000(node)으로 전환한다 —
+    # 실측 근거: 이미지에 node(1000:1000) 사용자가 존재하고, 앱이 읽는 /app(root:root 0755)·
+    # /app/.next(0755)는 others 읽기가 열려 있으며, 런타임 파일 쓰기가 전혀 없다(docker diff 0줄).
+    user: "1000:1000"
+    volumes:
+      - /mnt/synology/claude/logs/webservices/server1:/var/log/webservice
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-webreport}:${POSTGRES_PASSWORD:-webreport}@postgres:5432/${POSTGRES_DB:-webreport}?schema=public
       ELASTICSEARCH_URL: http://elasticsearch:9200
@@ -106,6 +114,24 @@ services:
       migrate:
         condition: service_completed_successfully
     networks: [backend]
+    command:
+      - sh
+      - -c
+      - |
+        # 원래 CMD는 `node server.js`(Next.js standalone). stdout이 그대로 `docker logs`로
+        # 나가면서 동시에 tee로 NAS 파일에도 append된다. 마운트가 쓰기 불가능하면 tee 없이
+        # 평범하게 기동해 컨테이너가 죽지 않는다(방어적 폴백).
+        # FIFO를 쓰는 이유: `exec node server.js | tee ...` 형태는 exec이 좌변 서브셸만 바꿀 뿐
+        # PID 1이 sh로 남아 docker stop의 SIGTERM이 앱에 전달되지 않는다(graceful shutdown 실패
+        # → SIGKILL → tee 버퍼 유실). FIFO는 node를 PID 1로 유지하고 tee는 백그라운드에서 읽는다.
+        # mkfifo 앞 존재 체크는 컨테이너 재사용 시 멱등성 확보용.
+        if [ -w /var/log/webservice ]; then
+          [ -p /tmp/logpipe ] || mkfifo /tmp/logpipe
+          tee -a /var/log/webservice/data-trade-platform-3503.log < /tmp/logpipe &
+          exec node server.js > /tmp/logpipe 2>&1
+        else
+          exec node server.js
+        fi
 
   # 데모 데이터 적재 전용 — 기본 `docker compose up`에는 포함되지 않고, 필요할 때만
   # 명시적으로 실행한다: docker compose run --rm seed
