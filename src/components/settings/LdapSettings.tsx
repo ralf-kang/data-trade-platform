@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import {
   Network, Save, Loader2, CheckCircle2, XCircle, AlertTriangle,
-  RefreshCw, KeyRound, Info, Users,
+  RefreshCw, KeyRound, Info, Users, Wand2, LogIn, Monitor,
 } from 'lucide-react';
 
 /** 서버가 돌려주는 설정 — bindPassword는 절대 포함되지 않는다. */
@@ -53,6 +53,23 @@ interface SyncResult {
   total: number;
 }
 
+interface TestLoginResult {
+  success: boolean;
+  message: string;
+  dn?: string;
+  mapped?: Record<string, string | null>;
+}
+
+/** ktl.local → dc=ktl,dc=local */
+function domainToBaseDn(domain: string): string {
+  return domain
+    .trim()
+    .split('.')
+    .filter(Boolean)
+    .map((p) => `dc=${p}`)
+    .join(',');
+}
+
 const STEP_LABEL: Record<DiagnosticResult['step'], string> = {
   CONNECT: '1. 서버 연결',
   TLS: '2. 암호화 채널',
@@ -70,6 +87,17 @@ export default function LdapSettings() {
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  // AD 빠른 설정
+  const [adDomain, setAdDomain] = useState('');
+  const [adHost, setAdHost] = useState('');
+  const [adSecure, setAdSecure] = useState<'STARTTLS' | 'LDAPS' | 'NONE'>('LDAPS');
+  const [adSvcUser, setAdSvcUser] = useState('');
+  const [presetApplied, setPresetApplied] = useState(false);
+  // 테스트 로그인
+  const [tlUser, setTlUser] = useState('');
+  const [tlPassword, setTlPassword] = useState('');
+  const [tlBusy, setTlBusy] = useState(false);
+  const [tlResult, setTlResult] = useState<TestLoginResult | null>(null);
 
   useEffect(() => {
     fetch('/api/ldap-config')
@@ -80,6 +108,55 @@ export default function LdapSettings() {
 
   const set = <K extends keyof LdapConfigView>(key: K, value: LdapConfigView[K]) =>
     setConfig((prev) => (prev ? { ...prev, [key]: value } : prev));
+
+  /** Windows Active Directory 표준값으로 한 번에 채운다 — 저장은 사용자가 확인 후 직접. */
+  const applyAdPreset = () => {
+    const domain = adDomain.trim().toLowerCase();
+    if (!domain.includes('.')) {
+      alert('도메인을 입력하세요. 예: ktl.local 또는 corp.company.com');
+      return;
+    }
+    const svc = adSvcUser.trim();
+    setConfig((prev) =>
+      prev
+        ? {
+            ...prev,
+            host: adHost.trim() || domain,
+            encryption: adSecure,
+            port: adSecure === 'LDAPS' ? 636 : 389,
+            baseDn: domainToBaseDn(domain),
+            userSearchScope: 'sub',
+            // 사용자 계정만(컴퓨터 계정 제외), Windows 로그인 아이디(sAMAccountName) 기준
+            userSearchFilter: '(&(objectCategory=person)(objectClass=user)(sAMAccountName={username}))',
+            // AD는 Bind DN 자리에 UPN(svc@domain)도 받는다
+            bindDn: svc ? (svc.includes('@') || svc.includes('=') ? svc : `${svc}@${domain}`) : prev.bindDn,
+            attrEmail: 'mail',
+            attrName: 'displayName',
+            attrEmployeeNo: 'employeeID',
+            attrDepartment: 'department',
+            attrPosition: 'title',
+          }
+        : prev
+    );
+    setPresetApplied(true);
+  };
+
+  const handleTestLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTlBusy(true);
+    setTlResult(null);
+    try {
+      const res = await fetch('/api/ldap-config/test-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: tlUser, password: tlPassword }),
+      });
+      setTlResult(await res.json());
+    } finally {
+      setTlBusy(false);
+      setTlPassword('');
+    }
+  };
 
   const handleSave = async () => {
     if (!config) return;
@@ -152,7 +229,7 @@ export default function LdapSettings() {
   }
 
   const label = 'block text-xs font-semibold text-slate-500 mb-1';
-  const input = 'w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-600 outline-none text-sm';
+  const input = 'w-full px-3 py-2 bg-white text-slate-900 placeholder:text-slate-400 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-600 outline-none text-sm';
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -185,6 +262,54 @@ export default function LdapSettings() {
             </div>
           </div>
         )}
+
+        {/* ── AD 빠른 설정 ── */}
+        <section className="p-5 rounded-xl border border-indigo-200 bg-indigo-50/60">
+          <h3 className="font-bold text-indigo-900 text-sm mb-1 flex items-center">
+            <Wand2 className="w-4 h-4 mr-1.5" /> Windows Active Directory 빠른 설정
+          </h3>
+          <p className="text-xs text-indigo-900/70 mb-4">
+            도메인 이름만 넣으면 AD 표준값(검색 필터·속성 매핑·Base DN)을 자동으로 채웁니다.
+            순서: <strong>① 빠른 설정 → ② 서비스 계정 비밀번호 입력 후 저장 → ③ 연결 테스트 → ④ 테스트 로그인 → ⑤ &ldquo;연동 사용&rdquo; 켜고 저장</strong>
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div>
+              <label className={label}>도메인 *</label>
+              <input className={input} value={adDomain} placeholder="ktl.local"
+                onChange={(e) => setAdDomain(e.target.value)} />
+            </div>
+            <div>
+              <label className={label}>도메인 컨트롤러(선택)</label>
+              <input className={input} value={adHost} placeholder="비우면 도메인 이름 사용"
+                onChange={(e) => setAdHost(e.target.value)} />
+            </div>
+            <div>
+              <label className={label}>연결 방식</label>
+              <select className={input} value={adSecure}
+                onChange={(e) => setAdSecure(e.target.value as 'STARTTLS' | 'LDAPS' | 'NONE')}>
+                <option value="LDAPS">LDAPS 636 (권장)</option>
+                <option value="STARTTLS">STARTTLS 389</option>
+                <option value="NONE">암호화 없음 389</option>
+              </select>
+            </div>
+            <div>
+              <label className={label}>조회용 서비스 계정(선택)</label>
+              <input className={input} value={adSvcUser} placeholder="svc-report"
+                onChange={(e) => setAdSvcUser(e.target.value)} />
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button type="button" onClick={applyAdPreset}
+              className="flex items-center px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 text-sm">
+              <Wand2 className="w-4 h-4 mr-1.5" /> AD 표준값 채우기
+            </button>
+            {presetApplied && (
+              <span className="text-xs text-indigo-800">
+                아래 항목이 채워졌습니다. 서비스 계정 비밀번호를 입력하고 <strong>설정 저장</strong>을 누르세요.
+              </span>
+            )}
+          </div>
+        </section>
 
         {/* ── 연결 ── */}
         <section>
@@ -371,6 +496,47 @@ export default function LdapSettings() {
             </span>
           )}
         </div>
+
+        {/* ── 테스트 로그인 ── */}
+        <section className="pt-4 border-t border-slate-100">
+          <h3 className="font-bold text-slate-800 text-sm mb-1 flex items-center">
+            <Monitor className="w-4 h-4 mr-1.5 text-slate-500" /> 테스트 로그인
+          </h3>
+          <p className="text-xs text-slate-500 mb-3">
+            실제 Windows 계정 하나로 로그인이 되는지, 이름·이메일·부서가 제대로 연결되는지 미리 확인합니다.
+            (설정을 먼저 저장해야 하며, 계정이 만들어지지는 않습니다.)
+          </p>
+          <form onSubmit={handleTestLogin} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3">
+            <input className={input} value={tlUser} placeholder="Windows 아이디 (예: hong)" autoComplete="off"
+              onChange={(e) => setTlUser(e.target.value)} />
+            <input className={input} type="password" value={tlPassword} placeholder="비밀번호" autoComplete="new-password"
+              onChange={(e) => setTlPassword(e.target.value)} />
+            <button type="submit" disabled={tlBusy || !tlUser || !tlPassword}
+              className="flex items-center justify-center px-5 py-2 bg-white border border-indigo-300 text-indigo-700 font-bold rounded-lg hover:bg-indigo-50 disabled:opacity-50 text-sm">
+              {tlBusy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <LogIn className="w-4 h-4 mr-2" />}
+              테스트
+            </button>
+          </form>
+          {tlResult && (
+            <div className={`mt-3 p-4 rounded-lg border text-sm ${tlResult.success ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-rose-50 border-rose-200 text-rose-900'}`}>
+              <p className="font-semibold flex items-center">
+                {tlResult.success ? <CheckCircle2 className="w-4 h-4 mr-2" /> : <XCircle className="w-4 h-4 mr-2" />}
+                {tlResult.message}
+              </p>
+              {tlResult.dn && <p className="mt-2 font-mono text-xs text-slate-500 break-all">{tlResult.dn}</p>}
+              {tlResult.mapped && (
+                <div className="mt-2 grid grid-cols-2 md:grid-cols-5 gap-2">
+                  {Object.entries(tlResult.mapped).map(([k, v]) => (
+                    <div key={k} className="bg-white rounded p-2 border border-slate-200">
+                      <div className="text-[11px] text-slate-400">{k}</div>
+                      <div className="text-xs text-slate-800 break-all">{v ?? <span className="text-rose-500">(비어 있음)</span>}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </section>
 
         {/* ── 진단 결과 ── */}
         {testResult && (

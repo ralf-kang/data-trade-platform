@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'crypto';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import type { IdentityMode, User } from '@/generated/prisma/client';
+import { readSession } from '@/lib/session';
 
 /**
  * 응답자 신원(1단계) — "로그인 없이"와 "누군지 안다"를 양립시키는 계층.
@@ -171,11 +172,12 @@ export async function resolveRespondent(formId: string): Promise<RespondentIdent
 
   const store = await cookies();
 
-  // 플랫폼 로그인 세션(src/lib/auth.ts의 adminRole/adminEmail 쿠키 브릿지) — 계정을
-  // 새로 만들지는 않는다. 없는 이메일이면 로그인 상태가 아닌 것과 같이 취급한다.
-  const rawEmail = store.get('adminEmail')?.value;
-  if (rawEmail) {
-    const email = decodeURIComponent(rawEmail);
+  // 플랫폼 로그인 세션(src/lib/session.ts 서명 쿠키) — 계정을 새로 만들지는 않는다.
+  // 없는 이메일이면 로그인 상태가 아닌 것과 같이 취급한다. 서명이 맞지 않는 위조 쿠키는
+  // readSession()이 null로 돌려주므로 여기서 신원으로 쓰이지 않는다.
+  const session = await readSession();
+  if (session) {
+    const email = session.email;
     const user = await prisma.user.findUnique({ where: { email } });
     if (user && user.status === 'ACTIVE') {
       return { level: 'AUTHENTICATED', user, tokenId: null, campaignId: null };

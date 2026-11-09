@@ -1,16 +1,17 @@
-import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { readSession } from '@/lib/session';
 import type { RoleType, User, UserRole } from '@/generated/prisma/client';
 
 /**
- * 로그인 화면(src/app/login/page.tsx)은 아직 세션 저장소 없이 `adminRole`/`adminEmail`
- * 쿠키만으로 신원을 표시한다. 이 헬퍼는 그 쿠키를 Postgres의 User 레코드와 이어주는
- * 다리 역할을 한다 — 첫 로그인 시 자동으로 계정을 만들어 둔다.
+ * 세션(`adminRole`/`adminEmail` + 서명 쿠키 `wreSession`)은 서버 로그인 라우트만 발급한다
+ * (src/lib/session.ts). 이 헬퍼는 그 세션을 Postgres의 User 레코드와 이어준다.
  *
- * NOTE: 목업에서 실서비스로 넘어가는 과도기용 임시 브릿지다. 신원이 포인트·개인정보와
- * 연결되기 전에 반드시 실제 인증(LDAP 또는 자격증명 + 정식 세션)으로 교체해야 한다.
- * 지금 구조는 쿠키를 그대로 신뢰하므로 누구나 타인 행세를 할 수 있다.
+ * 로그인 경로:
+ *   - Windows(AD/LDAP) 계정: /api/auth/ldap-login — 디렉터리 바인딩으로 비밀번호 검증
+ *   - 최고관리자: /api/auth/super/* — 고정 수신 주소로 보낸 이메일 인증번호 검증
+ *   - 이메일 간편 로그인(과도기): /api/auth/email-login — LDAP 미사용 시에만 허용,
+ *     비밀번호 검증이 없으므로 LDAP 연동을 켜면 자동으로 차단된다.
  */
 
 /** 역할 목록을 함께 들고 다니는 사용자 — 권한 판정에 매번 재조회하지 않기 위함. */
@@ -39,19 +40,17 @@ export function hasFormRole(user: ActingUser, role: RoleType, formId: string): b
 }
 
 export async function getCurrentUser(): Promise<ActingUser> {
-  const store = await cookies();
-  const cookieRole = (store.get('adminRole')?.value as 'admin' | 'super-admin' | undefined) || 'admin';
-  const rawEmail = store.get('adminEmail')?.value;
-  const email = rawEmail
-    ? decodeURIComponent(rawEmail)
-    : cookieRole === 'super-admin'
-      ? 'admin@example.com'
-      : 'admin@company.com';
+  // 서명 검증된 세션만 신뢰한다(src/lib/session.ts). 세션이 없을 때의 기본 계정 폴백은
+  // 기존 동작 호환용이며, 보호가 필요한 API는 반드시 requireAdmin()을 먼저 거친다.
+  const session = await readSession();
+  const cookieRole = session?.role ?? 'admin';
+  const email = session?.email ?? 'admin@company.com';
 
   const existing = await prisma.user.findUnique({ where: { email }, include: { roles: true } });
   if (existing) return existing;
 
-  // 과도기 브릿지: 쿠키의 역할을 그대로 부여한다. 실제 인증 도입 시 이 분기는 사라진다.
+  // 첫 로그인 계정 자동 생성. 최고관리자(PLATFORM_ADMIN)는 여기서 절대 자동 부여하지 않는다 —
+  // 최고관리자 세션은 OTP 검증 라우트가 역할을 명시적으로 부여한 뒤에만 발급된다.
   const created = await prisma.user.create({
     data: {
       email,
@@ -60,10 +59,7 @@ export async function getCurrentUser(): Promise<ActingUser> {
       roles: {
         create: [
           { role: 'MEMBER', grantedBy: 'auth-bridge' },
-          {
-            role: cookieRole === 'super-admin' ? 'PLATFORM_ADMIN' : 'AUTHOR',
-            grantedBy: 'auth-bridge',
-          },
+          ...(cookieRole === 'admin' ? [{ role: 'AUTHOR' as const, grantedBy: 'auth-bridge' }] : []),
         ],
       },
     },
@@ -83,8 +79,7 @@ export const getCurrentAdmin = getCurrentUser;
  * 상태의 무단 접근·반복적/체계적 추출을 막기 위해 관리자 API는 반드시 이 검사를 거쳐야 한다.
  */
 export async function isAuthenticated(): Promise<boolean> {
-  const store = await cookies();
-  return !!store.get('adminRole')?.value;
+  return (await readSession()) !== null;
 }
 
 /**

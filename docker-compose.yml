@@ -105,6 +105,16 @@ services:
       # LDAP 바인딩 비밀번호 등 비밀값의 AES-256-GCM 암호화 키(src/lib/crypto.ts).
       # 미설정이면 LDAP 설정 저장이 실패한다 — 약한 기본키로 조용히 넘어가지 않도록 의도한 동작.
       APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:-}
+      # 세션 쿠키 서명 키(src/lib/session.ts). 비우면 APP_ENCRYPTION_KEY로 서명한다.
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      # 최고관리자 로그인 인증번호 수신 주소(src/lib/superAdminOtp.ts) + 발송용 SMTP(src/lib/mailer.ts).
+      # SMTP 미설정이면 운영에서 인증번호 발송이 실패한다(최고관리자 로그인 불가).
+      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:-ralfkang@outlook.com}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
       NODE_ENV: production
     depends_on:
       postgres:

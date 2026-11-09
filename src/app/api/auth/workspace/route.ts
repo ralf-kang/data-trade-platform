@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import { writeSession } from '@/lib/session';
 import { getCurrentUser, isPlatformAdmin, requireAdmin } from '@/lib/auth';
 
 /**
@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const store = await cookies();
-  store.set('adminRole', workspace, { path: '/' });
+  // 서명 세션을 새 워크스페이스로 재발급한다(역할 쿠키만 바꾸면 서명이 깨져 로그아웃됨).
+  await writeSession(actor.email, workspace);
   return NextResponse.json({ ok: true, workspace });
 }

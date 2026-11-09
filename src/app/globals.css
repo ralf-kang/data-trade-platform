@@ -16,10 +16,25 @@
     "Liberation Mono", monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* 다크모드 비활성화 — 모든 화면이 흰 카드(bg-white) 기반 라이트 디자인이다.
+   예전에는 OS가 다크모드일 때 body 글자색만 #ededed로 바뀌어, 색을 따로 지정하지 않은
+   입력칸(로그인 화면 등)에서 흰 바탕 위 흰 글씨가 되어 입력값이 보이지 않았다.
+   color-scheme: light 로 브라우저 기본 컨트롤(입력칸·자동완성·스크롤바)도 라이트로 고정한다. */
+:root {
+  color-scheme: light;
+}
+
+/* 입력값 가시성 보장 — 개별 화면이 글자색을 지정하지 않아도 진한 글씨로 보이게 한다.
+   (Tailwind 유틸리티 클래스가 있으면 그쪽이 우선한다: @layer base 는 utilities 보다 약함) */
+@layer base {
+  input,
+  textarea,
+  select {
+    color: #111827;
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: #9ca3af;
   }
 }
 
