@@ -59,7 +59,11 @@ export default function LoginPage() {
   useEffect(() => {
     fetch('/api/auth/methods')
       .then((r) => (r.ok ? r.json() : null))
-      .then((m) => setMethods(m ?? { ldapEnabled: false, superAdminEmailMasked: '' }))
+      .then((m) => {
+        // 메인 화면의 "최고 관리자 로그인" 링크(/login?tab=super)로 들어오면 해당 탭을 바로 연다.
+        if (new URLSearchParams(window.location.search).get('tab') === 'super') setTab('super');
+        setMethods(m ?? { ldapEnabled: false, superAdminEmailMasked: '' });
+      })
       .catch(() => setMethods({ ldapEnabled: false, superAdminEmailMasked: '' }));
   }, []);
 

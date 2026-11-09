@@ -206,7 +206,7 @@ export default function Home() {
               계정·권한, AD(Windows 계정) 연동, 감사 기록 등 플랫폼 전체를 관리합니다.
               등록된 관리자 메일로 받은 <strong>인증번호</strong>로 로그인하세요.
             </p>
-            <Link href="/login" className="mt-5 inline-flex items-center text-sm font-bold text-slate-800 hover:text-black">
+            <Link href="/login?tab=super" className="mt-5 inline-flex items-center text-sm font-bold text-slate-800 hover:text-black">
               최고 관리자 로그인 <ArrowRight className="w-4 h-4 ml-1" />
             </Link>
           </div>
