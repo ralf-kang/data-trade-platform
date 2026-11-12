@@ -236,9 +236,11 @@ export default function LoginPage() {
                 >
                   {busy ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Windows 계정으로 로그인 <ArrowRight className="ml-2 w-4 h-4" /></>}
                 </button>
-                <p className="text-xs text-gray-400 text-center">
-                  처음 로그인하면 계정이 자동으로 만들어지고, 회사 디렉터리의 이름·부서가 연결됩니다.
-                </p>
+                <ul className="text-xs text-gray-500 space-y-1 list-disc pl-4">
+                  <li>처음 로그인하면 계정이 자동으로 만들어지고, 회사 디렉터리의 이름·부서가 연결됩니다.</li>
+                  <li>비밀번호는 이 서비스에 저장되지 않고, 회사 AD 서버에서 바로 확인합니다.</li>
+                  <li>비밀번호를 잊었거나 계정이 잠겼다면 사내 IT 담당자에게 문의하세요.</li>
+                </ul>
               </form>
             ) : (
               /* ── 이메일 간편 로그인 (LDAP 미설정 과도기) ── */

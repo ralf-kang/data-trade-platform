@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import {
-  ArrowRight, BarChart3, CheckCircle2, ClipboardList, FileText, HelpCircle, Lock, Monitor,
+  ArrowRight, BarChart3, CheckCircle2, ClipboardList, FileText, HelpCircle, Lock, LogIn,
   MousePointerClick, QrCode, Send, ShieldCheck, Sparkles, Users,
 } from 'lucide-react';
 
@@ -59,10 +59,6 @@ const FAQ = [
     a: '아니요. 받은 응답 링크(또는 QR)를 열면 바로 작성할 수 있습니다. 로그인은 내 응답 이력과 포인트를 보고 싶을 때만 필요해요.',
   },
   {
-    q: '어떤 계정으로 로그인하나요?',
-    a: '회사 PC에 로그인할 때 쓰는 Windows 계정(아이디·비밀번호)을 그대로 쓰면 됩니다. 처음 로그인하면 계정이 자동으로 만들어져요.',
-  },
-  {
     q: '양식을 직접 만들고 싶어요.',
     a: '로그인 후 "제작 자격" 메뉴에서 신청하거나 관리자에게 요청하세요. 승인되면 양식 만들기 화면이 열립니다.',
   },
@@ -110,7 +106,7 @@ export default function Home() {
               href="/login"
               className="inline-flex items-center justify-center px-7 py-3.5 text-[15px] font-bold text-white bg-indigo-600 rounded-xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-colors"
             >
-              <Monitor className="w-5 h-5 mr-2" /> Windows 계정으로 시작하기
+              <LogIn className="w-5 h-5 mr-2" /> 로그인하고 시작하기
             </Link>
             <a
               href="#how"
@@ -193,17 +189,16 @@ export default function Home() {
             <h3 className="font-bold text-gray-900 mb-1">임직원 · 양식 담당자예요</h3>
             <p className="text-sm text-gray-600 leading-relaxed flex-1">
               내 응답 이력·포인트를 확인하거나, 양식을 만들고 결과를 관리하세요.
-              <strong> 회사 Windows 계정</strong>으로 바로 로그인됩니다.
             </p>
             <Link href="/login" className="mt-5 inline-flex items-center text-sm font-bold text-indigo-700 hover:text-indigo-900">
-              Windows 계정으로 로그인 <ArrowRight className="w-4 h-4 ml-1" />
+              로그인 <ArrowRight className="w-4 h-4 ml-1" />
             </Link>
           </div>
           <div className="flex flex-col p-6 rounded-2xl border border-gray-200">
             <Lock className="w-7 h-7 text-slate-700 mb-4" />
             <h3 className="font-bold text-gray-900 mb-1">시스템 관리자예요</h3>
             <p className="text-sm text-gray-600 leading-relaxed flex-1">
-              계정·권한, AD(Windows 계정) 연동, 감사 기록 등 플랫폼 전체를 관리합니다.
+              계정·권한, 로그인 연동, 감사 기록 등 플랫폼 전체를 관리합니다.
               등록된 관리자 메일로 받은 <strong>인증번호</strong>로 로그인하세요.
             </p>
             <Link href="/login?tab=super" className="mt-5 inline-flex items-center text-sm font-bold text-slate-800 hover:text-black">
